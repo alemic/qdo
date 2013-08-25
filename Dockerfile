@@ -4,6 +4,9 @@ MAINTAINER Borge N. Kjelsrud <borgenk@gmail.com>
 RUN apt-get update
 RUN apt-get upgrade -y
 
+RUN echo "Europe/Oslo" | tee /etc/timezone
+RUN dpkg-reconfigure --frontend noninteractive tzdata
+
 # Redis
 RUN apt-get install -y python-software-properties python-setuptools
 RUN add-apt-repository ppa:chris-lea/redis-server
@@ -17,7 +20,9 @@ EXPOSE 6379
 RUN easy_install supervisor
 ADD conf/docker/supervisord.conf /etc/supervisord.conf
 
-# QDo
-ADD qdo /usr/bin/qdo
-
 CMD ["/usr/local/bin/supervisord", "-n", "-c", "/etc/supervisord.conf"]
+
+# QDo
+ADD web/template/ /var/www/web/template
+ADD qdo /usr/bin/qdo
+EXPOSE 8080
