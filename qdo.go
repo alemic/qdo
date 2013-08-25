@@ -17,7 +17,7 @@ import (
 	"github.com/borgenk/qdo/log"
 )
 
-const Version = 2.0
+const Version = 0.1
 
 // Number of simultaneous workers processing tasks.
 const nWorker = 5 // TODO: This should be configurable.
