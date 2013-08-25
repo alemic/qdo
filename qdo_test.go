@@ -37,6 +37,16 @@ var j2 = queue.Job{
 	Delay:   0,
 }
 
+// Job 3
+var j3Task = debugTask{}
+var j3TaskJ, _ = json.Marshal(j3Task)
+var j3 = queue.Job{
+	Tries:   0,
+	URL:     "http://10.0.2.15:8000/test",
+	Payload: j3TaskJ,
+	Delay:   0,
+}
+
 func TestInsertJobs(t *testing.T) {
 	dbc := db.Config{
 		Host:        dbDefaultHost,
@@ -67,5 +77,14 @@ func TestInsertJobs(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Command failed: %s", err.Error())
 		return
+	}
+
+	j, _ = json.Marshal(j3)
+	for i := 0; i < 100000; i++ {
+		_, err = c.Do("LPUSH", db.WaitingList, j)
+		if err != nil {
+			t.Fatalf("Command failed: %s", err.Error())
+			return
+		}
 	}
 }

@@ -18,7 +18,7 @@ const dbDefaultPass = ""
 const dbDefaultIdx = 0
 
 const qDefaultNWorkers = 5
-const qDefaultTThrottle = time.Duration(time.Second / 2)
+const qDefaultTThrottle = time.Duration(time.Second / 10)
 const qDefaultTTaskLimit = time.Duration(10 * time.Minute)
 const qDefaultNTaskTries = 10
 
