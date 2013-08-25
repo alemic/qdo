@@ -16,8 +16,6 @@ import (
 	"github.com/borgenk/qdo/log"
 )
 
-//var Log = log.New(os.Stdout, "", 0)
-
 type Config struct {
 	NWorker      int32         // Number of simultaneous workers processing tasks.
 	Throttle     time.Duration // Number of maxium task invocations from queue per second.
