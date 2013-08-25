@@ -285,11 +285,10 @@ func request(ch chan int, j []byte) {
 	}
 
 	if job.Tries >= taskMaxTries {
-		// Log error
-		// Dump data to tmp file
 		// Remove it from processinglist
 		Log.Infof("task reached max tries: %d", job.Tries)
 		removeProcessing(&c, j)
+		// TODO: store/dump task somewhere?
 		return
 	}
 
