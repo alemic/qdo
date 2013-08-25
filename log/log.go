@@ -16,6 +16,7 @@ import (
 	"fmt"
 	"io"
 	stdlib "log"
+	"os"
 	"time"
 )
 
@@ -34,55 +35,57 @@ const (
 
 var levels = []string{FATAL, ERROR, WARN, DEBUG, INFO}
 
-type Log struct {
+type logger struct {
 	logger *stdlib.Logger
 }
 
-func New(out io.Writer, prefix string, flag int) *Log {
-	return &Log{stdlib.New(out, prefix, flag)}
+var l = New(os.Stdout, "", 0)
+
+func New(out io.Writer, prefix string, flag int) *logger {
+	return &logger{stdlib.New(out, prefix, flag)}
 }
 
 // NOTE - the semantics here are different from go's logger.Fatal
 // It will neither panic nor exit
-func (sl *Log) Fatal(meta string, e error) {
-	sl.logger.Println(join3(FATAL, meta, e.Error()))
+func Fatal(meta string, e error) {
+	l.logger.Println(join3(FATAL, meta, e.Error()))
 }
 
 // NOTE - the semantics here are different from go's logger.Fatal
 // It will neither panic nor exit
-func (sl *Log) Fatalf(format string, v ...interface{}) {
-	sl.logger.Println(join2(FATAL, fmt.Sprintf(format, v...)))
+func Fatalf(format string, v ...interface{}) {
+	l.logger.Println(join2(FATAL, fmt.Sprintf(format, v...)))
 }
 
-func (sl *Log) Error(meta string, e error) {
-	sl.logger.Println(join3(ERROR, meta, e.Error()))
+func Error(meta string, e error) {
+	l.logger.Println(join3(ERROR, meta, e.Error()))
 }
-func (sl *Log) Errorf(format string, v ...interface{}) {
-	sl.logger.Println(join2(ERROR, fmt.Sprintf(format, v...)))
-}
-
-func (sl *Log) Debug(msg string) {
-	sl.logger.Println(join2(DEBUG, msg))
+func Errorf(format string, v ...interface{}) {
+	l.logger.Println(join2(ERROR, fmt.Sprintf(format, v...)))
 }
 
-func (sl *Log) Debugf(format string, v ...interface{}) {
-	sl.logger.Println(join2(DEBUG, fmt.Sprintf(format, v...)))
+func Debug(msg string) {
+	l.logger.Println(join2(DEBUG, msg))
 }
 
-func (sl *Log) Warn(msg string) {
-	sl.logger.Println(join2(WARN, msg))
+func Debugf(format string, v ...interface{}) {
+	l.logger.Println(join2(DEBUG, fmt.Sprintf(format, v...)))
 }
 
-func (sl *Log) Warnf(format string, v ...interface{}) {
-	sl.logger.Println(join2(WARN, fmt.Sprintf(format, v...)))
+func Warn(msg string) {
+	l.logger.Println(join2(WARN, msg))
 }
 
-func (sl *Log) Info(msg string) {
-	sl.logger.Println(join2(INFO, msg))
+func Warnf(format string, v ...interface{}) {
+	l.logger.Println(join2(WARN, fmt.Sprintf(format, v...)))
 }
 
-func (sl *Log) Infof(format string, v ...interface{}) {
-	sl.logger.Println(join2(INFO, fmt.Sprintf(format, v...)))
+func Info(msg string) {
+	l.logger.Println(join2(INFO, msg))
+}
+
+func Infof(format string, v ...interface{}) {
+	l.logger.Println(join2(INFO, fmt.Sprintf(format, v...)))
 }
 
 func join2(level, msg string) string {

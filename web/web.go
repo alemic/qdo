@@ -5,6 +5,7 @@ import (
 	"net/http"
 
 	"github.com/borgenk/qdo/db"
+	"github.com/borgenk/qdo/log"
 )
 
 type Header struct {
@@ -25,14 +26,13 @@ func renderTemplate(w http.ResponseWriter, tmpl string, p *Page) {
 }
 
 func handler(w http.ResponseWriter, r *http.Request) {
-	/*s
 	c := db.Pool.Get()
 	err := c.Err()
 	if err != nil {
-		//Log.Error("", err)
+		log.Error("", err)
 		return
 	}
-	defer c.Close()*/
+	defer c.Close()
 
 	h := Header{
 		Title: "QDo",

@@ -2,7 +2,6 @@ package db
 
 import (
 	"fmt"
-	"os"
 
 	"github.com/garyburd/redigo/redis"
 
@@ -22,8 +21,6 @@ type Config struct {
 	Connections int
 }
 
-var Log = log.New(os.Stdout, "", 0)
-
 var Pool *redis.Pool
 
 func ConnectPool(dbc Config) {
@@ -34,20 +31,20 @@ func ConnectPool(dbc Config) {
 		Dial: func() (redis.Conn, error) {
 			c, err := redis.Dial("tcp", fmt.Sprintf("%s:%d", dbc.Host, dbc.Port))
 			if err != nil {
-				Log.Error("", err)
+				log.Error("", err)
 				return nil, err
 			}
 			if dbc.Pass != "" {
 				_, err = c.Do("AUTH", dbc.Pass)
 				if err != nil {
 					c.Close()
-					Log.Error("", err)
+					log.Error("", err)
 					return nil, err
 				}
 			}
 			_, err = c.Do("SELECT", dbc.Idx)
 			if err != nil {
-				Log.Error("", err)
+				log.Error("", err)
 				return nil, err
 			}
 			return c, err

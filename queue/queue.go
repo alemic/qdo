@@ -16,7 +16,7 @@ import (
 	"github.com/borgenk/qdo/log"
 )
 
-var Log = log.New(os.Stdout, "", 0)
+//var Log = log.New(os.Stdout, "", 0)
 
 type Config struct {
 	NWorker      int32         // Number of simultaneous workers processing tasks.
@@ -39,7 +39,7 @@ func Run(dbc db.Config, qc Config) {
 		c = db.Pool.Get()
 		err := c.Err()
 		if err != nil {
-			Log.Error("", err)
+			log.Error("", err)
 			time.Sleep(5 * time.Second)
 		} else {
 			defer c.Close()
@@ -68,7 +68,7 @@ func Run(dbc db.Config, qc Config) {
 				db.ProcessingList, "0"))
 			if err != nil {
 				// No retry / reconnect logic yet.
-				Log.Error("", err)
+				log.Error("", err)
 				os.Exit(1)
 			}
 
@@ -77,7 +77,7 @@ func Run(dbc db.Config, qc Config) {
 			// Throttle task invocations per second.
 			time.Sleep(qc.Throttle)
 		case <-si:
-			Log.Info("program killed")
+			log.Info("program killed")
 			os.Exit(0)
 		}
 
@@ -89,7 +89,7 @@ func requeueAll(c *redis.Conn) error {
 	for {
 		s, err := (*c).Do("RPOPLPUSH", db.ProcessingList, db.WaitingList)
 		if err != nil {
-			Log.Error("", err)
+			log.Error("", err)
 			return err
 		}
 		if s == nil {
@@ -102,7 +102,7 @@ func scheduler() {
 	c := db.Pool.Get()
 	err := c.Err()
 	if err != nil {
-		Log.Error("", err)
+		log.Error("", err)
 		return
 	}
 	defer c.Close()
@@ -131,7 +131,7 @@ func scheduler() {
 		now := int32(time.Now().Unix())
 		_, err = rescheduleLua.Do(c, db.Schedulelist, now, db.WaitingList)
 		if err != nil {
-			Log.Error("", err)
+			log.Error("", err)
 		}
 		time.Sleep(5 * time.Second)
 	}
@@ -140,7 +140,7 @@ func scheduler() {
 func removeProcessing(c *redis.Conn, j []byte) error {
 	_, err := redis.Int((*c).Do("LREM", db.ProcessingList, "1", j))
 	if err != nil {
-		Log.Error("", err)
+		log.Error("", err)
 		return err
 	}
 	return nil
@@ -149,12 +149,12 @@ func removeProcessing(c *redis.Conn, j []byte) error {
 func requeueJob(c *redis.Conn, job Job) error {
 	j, err := json.Marshal(job)
 	if err != nil {
-		Log.Error("", err)
+		log.Error("", err)
 		return err
 	}
 	_, err = (*c).Do("LPUSH", db.WaitingList, j)
 	if err != nil {
-		Log.Error("", err)
+		log.Error("", err)
 		return err
 	}
 	return nil
@@ -166,7 +166,7 @@ func request(qc *Config, ch chan int, j []byte) {
 	c := db.Pool.Get()
 	err := c.Err()
 	if err != nil {
-		Log.Error("", err)
+		log.Error("", err)
 		return
 	}
 	defer c.Close()
@@ -175,7 +175,7 @@ func request(qc *Config, ch chan int, j []byte) {
 	err = json.Unmarshal(j, &job)
 	if err != nil {
 		// Assume invalid job, discard it.
-		Log.Error("invalid task format", err)
+		log.Error("invalid task format", err)
 		removeProcessing(&c, j)
 		return
 	}
@@ -183,7 +183,7 @@ func request(qc *Config, ch chan int, j []byte) {
 	var p map[string]string
 	err = json.Unmarshal(job.Payload, &p)
 	if err != nil {
-		Log.Error("", err)
+		log.Error("", err)
 		removeProcessing(&c, j)
 		return
 	}
@@ -196,12 +196,12 @@ func request(qc *Config, ch chan int, j []byte) {
 	_, err = url.Parse(job.URL)
 	if err != nil {
 		// Assume invalid job, discard it.
-		Log.Error("invalid URL, discarding job", err)
+		log.Error("invalid URL, discarding job", err)
 		removeProcessing(&c, j)
 		return
 	}
 
-	Log.Infof("processing new task: %s", job.URL)
+	log.Infof("processing new task: %s", job.URL)
 
 	transport := http.Transport{
 		Dial: func(network, addr string) (net.Conn, error) {
@@ -221,17 +221,17 @@ func request(qc *Config, ch chan int, j []byte) {
 
 	if err == nil && resp.StatusCode >= 200 && resp.StatusCode <= 299 {
 		removeProcessing(&c, j)
-		Log.Infof("task completed successfully: %s", resp.Status)
+		log.Infof("task completed successfully: %s", resp.Status)
 		return
 	} else if err == nil && resp.StatusCode >= 400 && resp.StatusCode <= 499 {
 		removeProcessing(&c, j)
-		Log.Infof("task failed, request invalid: %s", resp.Status)
+		log.Infof("task failed, request invalid: %s", resp.Status)
 		return
 	}
 
 	if job.Tries >= (*qc).TaskMaxTries {
 		// Remove it from ProcessingList
-		Log.Infof("task reached max tries: %d", job.Tries)
+		log.Infof("task reached max tries: %d", job.Tries)
 		removeProcessing(&c, j)
 		// TODO: store/dump task somewhere?
 		return
@@ -245,7 +245,7 @@ func request(qc *Config, ch chan int, j []byte) {
 
 	rj, err := json.Marshal(job)
 	if err != nil {
-		Log.Error("", err)
+		log.Error("", err)
 		return
 	}
 	schedTs := int32(time.Now().Unix()) + job.Delay
@@ -272,9 +272,9 @@ func request(qc *Config, ch chan int, j []byte) {
 	_, err = delayRetry.Do(c, db.ScheduleId, rj, db.Schedulelist, schedTs,
 		db.ProcessingList, j)
 	if err != nil {
-		Log.Infof("zombie left in processing: %s", err)
+		log.Infof("zombie left in processing: %s", err)
 		return
 	}
 
-	Log.Infof("task failed, rescheduled for retry in %d seconds", job.Delay)
+	log.Infof("task failed, rescheduled for retry in %d seconds", job.Delay)
 }

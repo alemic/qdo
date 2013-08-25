@@ -2,13 +2,12 @@ package main
 
 import (
 	"flag"
-	"os"
 	"time"
 
 	"github.com/borgenk/qdo/db"
 	"github.com/borgenk/qdo/log"
 	"github.com/borgenk/qdo/queue"
-	_ "github.com/borgenk/qdo/web"
+	"github.com/borgenk/qdo/web"
 )
 
 const Version = 0.1
@@ -23,14 +22,12 @@ const qDefaultTThrottle = time.Duration(time.Second / 2)
 const qDefaultTTaskLimit = time.Duration(10 * time.Minute)
 const qDefaultNTaskTries = 10
 
-var Log = log.New(os.Stdout, "", 0)
-
 func main() {
 	host := flag.String("h", dbDefaultHost, "Database host")
 	port := flag.Int("p", dbDefaultPort, "Database port")
 	flag.Parse()
 
-	Log.Infof("starting QDo %.1f", Version)
+	log.Infof("starting QDo %.1f", Version)
 
 	dbc := db.Config{
 		Host:        *host,
@@ -41,7 +38,7 @@ func main() {
 	}
 
 	// Launch web admin interface server.
-	//go web.Run(dbc)
+	go web.Run(dbc)
 
 	// Launch queue routines.
 	qc := queue.Config{
