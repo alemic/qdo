@@ -1,4 +1,4 @@
-FROM ubuntu
+FROM ubuntu:12.04
 MAINTAINER Borge N. Kjelsrud <borgenk@gmail.com>
 
 RUN apt-get update
