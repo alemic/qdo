@@ -4,10 +4,10 @@ import (
 	"html/template"
 	"net/http"
 
-	"github.com/garyburd/redigo/redis"
+	"github.com/borgenk/qdo/third_party/github.com/garyburd/redigo/redis"
 
-	"github.com/borgenk/qdo/db"
-	"github.com/borgenk/qdo/log"
+	"github.com/borgenk/qdo/lib/db"
+	"github.com/borgenk/qdo/lib/log"
 )
 
 type Header struct {
@@ -19,7 +19,7 @@ type Page struct {
 	Length int
 }
 
-var templates = template.Must(template.ParseFiles("web/template/index.html"))
+var templates = template.Must(template.ParseFiles("lib/web/template/index.html"))
 
 func renderTemplate(w http.ResponseWriter, tmpl string, p *Page) {
 	err := templates.ExecuteTemplate(w, tmpl, p)

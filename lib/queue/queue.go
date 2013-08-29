@@ -10,10 +10,10 @@ import (
 	"strings"
 	"time"
 
-	"github.com/garyburd/redigo/redis"
+	"github.com/borgenk/qdo/third_party/github.com/garyburd/redigo/redis"
 
-	"github.com/borgenk/qdo/db"
-	"github.com/borgenk/qdo/log"
+	"github.com/borgenk/qdo/lib/db"
+	"github.com/borgenk/qdo/lib/log"
 )
 
 type Config struct {

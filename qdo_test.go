@@ -4,8 +4,8 @@ import (
 	"encoding/json"
 	"testing"
 
-	"github.com/borgenk/qdo/db"
-	"github.com/borgenk/qdo/queue"
+	"github.com/borgenk/qdo/lib/db"
+	"github.com/borgenk/qdo/lib/queue"
 )
 
 type debugTask struct {

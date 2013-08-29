@@ -4,10 +4,10 @@ import (
 	"flag"
 	"time"
 
-	"github.com/borgenk/qdo/db"
-	"github.com/borgenk/qdo/log"
-	"github.com/borgenk/qdo/queue"
-	"github.com/borgenk/qdo/web"
+	"github.com/borgenk/qdo/lib/db"
+	"github.com/borgenk/qdo/lib/log"
+	"github.com/borgenk/qdo/lib/queue"
+	"github.com/borgenk/qdo/lib/web"
 )
 
 const Version = 0.1

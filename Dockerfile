@@ -23,6 +23,6 @@ ADD conf/docker/supervisord.conf /etc/supervisord.conf
 CMD ["/usr/local/bin/supervisord", "-n", "-c", "/etc/supervisord.conf"]
 
 # QDo
-ADD web/template/ /var/www/web/template
+ADD lib/web/template/ /var/www/web/template
 ADD qdo /usr/bin/qdo
 EXPOSE 8080

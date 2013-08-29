@@ -3,9 +3,9 @@ package db
 import (
 	"fmt"
 
-	"github.com/garyburd/redigo/redis"
+	"github.com/borgenk/qdo/third_party/github.com/garyburd/redigo/redis"
 
-	"github.com/borgenk/qdo/log"
+	"github.com/borgenk/qdo/lib/log"
 )
 
 const WaitingList = "waitinglist"
