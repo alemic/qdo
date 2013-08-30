@@ -25,7 +25,7 @@ type Config struct {
 
 type Job struct {
 	URL     string
-	Payload []byte
+	Payload string
 	Tries   int32
 	Delay   int32
 }
@@ -179,7 +179,8 @@ func request(qc *Config, ch chan int, j []byte) {
 	}
 
 	var p map[string]string
-	err = json.Unmarshal(job.Payload, &p)
+	payload := []byte(job.Payload)
+	err = json.Unmarshal(payload, &p)
 	if err != nil {
 		log.Error("", err)
 		removeProcessing(&c, j)

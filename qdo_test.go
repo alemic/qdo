@@ -21,7 +21,7 @@ var j1TaskJ, _ = json.Marshal(j1Task)
 var j1 = queue.Job{
 	Tries:   0,
 	URL:     "http://10.0.2.15:8000/test",
-	Payload: j1TaskJ,
+	Payload: string(j1TaskJ),
 	Delay:   0,
 }
 
@@ -33,7 +33,7 @@ var j2TaskJ, _ = json.Marshal(j2Task)
 var j2 = queue.Job{
 	Tries:   0,
 	URL:     "http://10.0.2.15:8000/test",
-	Payload: j2TaskJ,
+	Payload: string(j2TaskJ),
 	Delay:   0,
 }
 
@@ -43,7 +43,7 @@ var j3TaskJ, _ = json.Marshal(j3Task)
 var j3 = queue.Job{
 	Tries:   0,
 	URL:     "http://10.0.2.15:8000/test",
-	Payload: j3TaskJ,
+	Payload: string(j3TaskJ),
 	Delay:   0,
 }
 
