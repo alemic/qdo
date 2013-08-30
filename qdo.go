@@ -17,6 +17,8 @@ const dbDefaultPort = 6379
 const dbDefaultPass = ""
 const dbDefaultIdx = 0
 
+const webDefaultPort = 8080
+
 const qDefaultNWorkers = 5
 const qDefaultTThrottle = time.Duration(time.Second / 10)
 const qDefaultTTaskLimit = time.Duration(10 * time.Minute)
@@ -25,6 +27,9 @@ const qDefaultNTaskTries = 10
 func main() {
 	host := flag.String("h", dbDefaultHost, "Database host")
 	port := flag.Int("p", dbDefaultPort, "Database port")
+	pass := flag.String("P", dbDefaultPass, "Database password")
+	idx := flag.Int("i", dbDefaultIdx, "Database index")
+	webPort := flag.Int("w", webDefaultPort, "Web port")
 	flag.Parse()
 
 	log.Infof("starting QDo %.1f", Version)
@@ -32,13 +37,13 @@ func main() {
 	dbc := db.Config{
 		Host:        *host,
 		Port:        *port,
-		Pass:        dbDefaultPass,
-		Idx:         dbDefaultIdx,
+		Pass:        *pass,
+		Idx:         *idx,
 		Connections: qDefaultNWorkers + 3, // n workers + fetcher + scheduler + web
 	}
 
 	// Launch web admin interface server.
-	go web.Run(dbc)
+	go web.Run(*webPort, dbc)
 
 	// Launch queue routines.
 	qc := queue.Config{

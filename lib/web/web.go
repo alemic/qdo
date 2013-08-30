@@ -1,6 +1,7 @@
 package web
 
 import (
+	"fmt"
 	"html/template"
 	"net/http"
 
@@ -49,9 +50,9 @@ func handler(w http.ResponseWriter, r *http.Request) {
 	renderTemplate(w, "index", p)
 }
 
-func Run(dbc db.Config) {
+func Run(port int, dbc db.Config) {
 	http.HandleFunc("/", handler)
-	http.ListenAndServe(":8080", nil)
+	http.ListenAndServe(fmt.Sprintf(":%d", port), nil)
 }
 
 func Length() (int, error) {
