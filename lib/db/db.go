@@ -8,11 +8,6 @@ import (
 	"github.com/borgenk/qdo/lib/log"
 )
 
-const WaitingList = "waitinglist"
-const ProcessingList = "processinglist"
-const Schedulelist = "schedulelist"
-const ScheduleId = "scheduleid"
-
 type Config struct {
 	Host        string // Default database host.
 	Port        int    // Default database port.

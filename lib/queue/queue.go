@@ -16,6 +16,11 @@ import (
 	"github.com/borgenk/qdo/lib/log"
 )
 
+const WaitingList = "waitinglist"
+const ProcessingList = "processinglist"
+const Schedulelist = "schedulelist"
+const ScheduleId = "scheduleid"
+
 type Config struct {
 	NWorker      int32         // Number of simultaneous workers processing tasks.
 	Throttle     time.Duration // Number of maxium task invocations from queue per second.
@@ -62,8 +67,8 @@ func Run(dbc db.Config, qc Config) {
 	for {
 		select {
 		case wk <- 1:
-			b, err := redis.Bytes(c.Do("BRPOPLPUSH", db.WaitingList,
-				db.ProcessingList, "0"))
+			b, err := redis.Bytes(c.Do("BRPOPLPUSH", WaitingList,
+				ProcessingList, "0"))
 			if err != nil {
 				// No retry / reconnect logic yet.
 				log.Error("", err)
@@ -85,7 +90,7 @@ func Run(dbc db.Config, qc Config) {
 // Move all entries in processing list to waiting queue.
 func requeueAll(c *redis.Conn) error {
 	for {
-		s, err := (*c).Do("RPOPLPUSH", db.ProcessingList, db.WaitingList)
+		s, err := (*c).Do("RPOPLPUSH", ProcessingList, WaitingList)
 		if err != nil {
 			log.Error("", err)
 			return err
@@ -127,7 +132,7 @@ func scheduler() {
 
 	for {
 		now := int32(time.Now().Unix())
-		_, err = rescheduleLua.Do(c, db.Schedulelist, now, db.WaitingList)
+		_, err = rescheduleLua.Do(c, Schedulelist, now, WaitingList)
 		if err != nil {
 			log.Error("", err)
 		}
@@ -136,7 +141,7 @@ func scheduler() {
 }
 
 func removeProcessing(c *redis.Conn, j []byte) error {
-	_, err := redis.Int((*c).Do("LREM", db.ProcessingList, "1", j))
+	_, err := redis.Int((*c).Do("LREM", ProcessingList, "1", j))
 	if err != nil {
 		log.Error("", err)
 		return err
@@ -150,7 +155,7 @@ func requeueJob(c *redis.Conn, job Job) error {
 		log.Error("", err)
 		return err
 	}
-	_, err = (*c).Do("LPUSH", db.WaitingList, j)
+	_, err = (*c).Do("LPUSH", WaitingList, j)
 	if err != nil {
 		log.Error("", err)
 		return err
@@ -268,8 +273,8 @@ func request(qc *Config, ch chan int, j []byte) {
          redis.call('ZADD', KEYS[3], KEYS[4], job)
          redis.call('LREM', KEYS[5], 1, KEYS[6])`)
 
-	_, err = delayRetry.Do(c, db.ScheduleId, rj, db.Schedulelist, schedTs,
-		db.ProcessingList, j)
+	_, err = delayRetry.Do(c, ScheduleId, rj, Schedulelist, schedTs,
+		ProcessingList, j)
 	if err != nil {
 		log.Infof("zombie left in processing: %s", err)
 		return
