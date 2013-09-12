@@ -8,6 +8,7 @@ import (
 	"github.com/borgenk/qdo/third_party/github.com/garyburd/redigo/redis"
 
 	"github.com/borgenk/qdo/lib/db"
+	"github.com/borgenk/qdo/lib/queue"
 	"github.com/borgenk/qdo/lib/log"
 )
 
@@ -20,7 +21,7 @@ type Page struct {
 	Length int
 }
 
-var templates = template.Must(template.ParseFiles("lib/web/template/index.html"))
+var templates *template.Template
 
 func renderTemplate(w http.ResponseWriter, tmpl string, p *Page) {
 	err := templates.ExecuteTemplate(w, tmpl, p)
@@ -50,7 +51,9 @@ func handler(w http.ResponseWriter, r *http.Request) {
 	renderTemplate(w, "index", p)
 }
 
-func Run(port int, dbc db.Config) {
+func Run(port int, documentRoot string, dbc db.Config) {
+	templates = template.Must(template.ParseFiles(documentRoot + "index.html"))
+
 	http.HandleFunc("/", handler)
 	http.ListenAndServe(fmt.Sprintf(":%d", port), nil)
 }
@@ -63,5 +66,5 @@ func Length() (int, error) {
 		return 0, err
 	}
 	defer c.Close()
-	return redis.Int(c.Do("LLEN", db.WaitingList))
+	return redis.Int(c.Do("LLEN", queue.WaitingList))
 }

@@ -10,7 +10,7 @@ import (
 	"github.com/borgenk/qdo/lib/web"
 )
 
-const Version = 0.1
+const Version = 0.2
 
 const dbDefaultHost = "127.0.0.1"
 const dbDefaultPort = 6379
@@ -18,6 +18,7 @@ const dbDefaultPass = ""
 const dbDefaultIdx = 0
 
 const webDefaultPort = 8080
+const webDefaultDocumentRoo = "/var/www/"
 
 const qDefaultNWorkers = 5
 const qDefaultTThrottle = time.Duration(time.Second / 10)
@@ -29,7 +30,10 @@ func main() {
 	port := flag.Int("p", dbDefaultPort, "Database port")
 	pass := flag.String("P", dbDefaultPass, "Database password")
 	idx := flag.Int("i", dbDefaultIdx, "Database index")
+
 	webPort := flag.Int("w", webDefaultPort, "Web port")
+	webDocumentRoot := flag.String("D", webDefaultDocumentRoo, "Web document root")
+
 	flag.Parse()
 
 	log.Infof("starting QDo %.1f", Version)
@@ -43,7 +47,7 @@ func main() {
 	}
 
 	// Launch web admin interface server.
-	go web.Run(*webPort, dbc)
+	go web.Run(*webPort, *webDocumentRoot, dbc)
 
 	// Launch queue routines.
 	qc := queue.Config{
