@@ -1,13 +1,13 @@
 package queue
 
 import (
+	"bytes"
 	"encoding/json"
 	"net"
 	"net/http"
 	"net/url"
 	"os"
 	"os/signal"
-	"strings"
 	"time"
 
 	"github.com/borgenk/qdo/third_party/github.com/garyburd/redigo/redis"
@@ -183,20 +183,6 @@ func request(qc *Config, ch chan int, j []byte) {
 		return
 	}
 
-	var p map[string]string
-	payload := []byte(job.Payload)
-	err = json.Unmarshal(payload, &p)
-	if err != nil {
-		log.Error("", err)
-		removeProcessing(&c, j)
-		return
-	}
-
-	values := make(url.Values)
-	for i, val := range p {
-		values.Set(i, val)
-	}
-
 	_, err = url.Parse(job.URL)
 	if err != nil {
 		// Assume invalid job, discard it.
@@ -217,8 +203,8 @@ func request(qc *Config, ch chan int, j []byte) {
 	client := http.Client{
 		Transport: &transport,
 	}
-	resp, err := client.Post(job.URL, "application/x-www-form-urlencoded",
-		strings.NewReader(values.Encode()))
+	resp, err := client.Post(job.URL, "application/json",
+		bytes.NewReader([]byte(job.Payload)))
 	if err == nil {
 		resp.Body.Close()
 	}
