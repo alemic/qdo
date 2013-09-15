@@ -1,8 +1,9 @@
 package main
 
 import (
+	"errors"
 	"flag"
-	"time"
+	"os"
 
 	"github.com/borgenk/qdo/lib/db"
 	"github.com/borgenk/qdo/lib/log"
@@ -20,12 +21,8 @@ const dbDefaultIdx = 0
 const webDefaultPort = 8080
 const webDefaultDocumentRoo = "/var/www/"
 
-const qDefaultNWorkers = 5
-const qDefaultTThrottle = time.Duration(time.Second / 10)
-const qDefaultTTaskLimit = time.Duration(10 * time.Minute)
-const qDefaultNTaskTries = 10
-
 func main() {
+	name := flag.String("n", "", "Site name")
 	host := flag.String("h", dbDefaultHost, "Database host")
 	port := flag.Int("p", dbDefaultPort, "Database port")
 	pass := flag.String("P", dbDefaultPass, "Database password")
@@ -36,26 +33,24 @@ func main() {
 
 	flag.Parse()
 
+	if *name == "" {
+		log.Error("", errors.New("missing site name"))
+		os.Exit(1)
+	}
+
 	log.Infof("starting QDo %.1f", Version)
 
 	dbc := db.Config{
-		Host:        *host,
-		Port:        *port,
-		Pass:        *pass,
-		Idx:         *idx,
-		Connections: qDefaultNWorkers + 3, // n workers + fetcher + scheduler + web
+		Host: *host,
+		Port: *port,
+		Pass: *pass,
+		Idx:  *idx,
 	}
 	db.ConnectPool(dbc)
 
 	// Launch web admin interface server.
 	go web.Run(*webPort, *webDocumentRoot)
 
-	// Launch queue routines.
-	qc := queue.Config{
-		NWorker:      qDefaultNWorkers,
-		Throttle:     qDefaultTThrottle,
-		TaskTLimit:   qDefaultTTaskLimit,
-		TaskMaxTries: qDefaultNTaskTries,
-	}
-	_ = queue.StartConveyor("Example", "default", qc)
+	// Launch queue manager.
+	queue.StartManager(*name)
 }
