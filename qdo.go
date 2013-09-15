@@ -45,9 +45,10 @@ func main() {
 		Idx:         *idx,
 		Connections: qDefaultNWorkers + 3, // n workers + fetcher + scheduler + web
 	}
+	db.ConnectPool(dbc)
 
 	// Launch web admin interface server.
-	go web.Run(*webPort, *webDocumentRoot, dbc)
+	go web.Run(*webPort, *webDocumentRoot)
 
 	// Launch queue routines.
 	qc := queue.Config{
@@ -56,5 +57,5 @@ func main() {
 		TaskTLimit:   qDefaultTTaskLimit,
 		TaskMaxTries: qDefaultNTaskTries,
 	}
-	queue.Run(dbc, qc)
+	_ = queue.StartConveyor("Example", "default", qc)
 }

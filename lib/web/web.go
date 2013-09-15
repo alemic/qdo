@@ -8,8 +8,8 @@ import (
 	"github.com/borgenk/qdo/third_party/github.com/garyburd/redigo/redis"
 
 	"github.com/borgenk/qdo/lib/db"
-	"github.com/borgenk/qdo/lib/queue"
 	"github.com/borgenk/qdo/lib/log"
+	"github.com/borgenk/qdo/lib/queue"
 )
 
 type Header struct {
@@ -31,6 +31,11 @@ func renderTemplate(w http.ResponseWriter, tmpl string, p *Page) {
 }
 
 func handler(w http.ResponseWriter, r *http.Request) {
+	if db.Pool == nil {
+		// Render template - db connection not avail..
+		return
+	}
+
 	c := db.Pool.Get()
 	err := c.Err()
 	if err != nil {
@@ -51,9 +56,8 @@ func handler(w http.ResponseWriter, r *http.Request) {
 	renderTemplate(w, "index", p)
 }
 
-func Run(port int, documentRoot string, dbc db.Config) {
+func Run(port int, documentRoot string) {
 	templates = template.Must(template.ParseFiles(documentRoot + "index.html"))
-
 	http.HandleFunc("/", handler)
 	http.ListenAndServe(fmt.Sprintf(":%d", port), nil)
 }

@@ -18,7 +18,7 @@ var j1Task = debugTask{
 	DebugWait: "10",
 }
 var j1TaskJ, _ = json.Marshal(j1Task)
-var j1 = queue.Job{
+var j1 = queue.Task{
 	Tries:   0,
 	URL:     "http://10.0.2.15:8000/test",
 	Payload: string(j1TaskJ),
@@ -30,7 +30,7 @@ var j2Task = debugTask{
 	DebugHTTPStatus: "500",
 }
 var j2TaskJ, _ = json.Marshal(j2Task)
-var j2 = queue.Job{
+var j2 = queue.Task{
 	Tries:   0,
 	URL:     "http://10.0.2.15:8000/test",
 	Payload: string(j2TaskJ),
@@ -40,7 +40,7 @@ var j2 = queue.Job{
 // Job 3
 var j3Task = debugTask{}
 var j3TaskJ, _ = json.Marshal(j3Task)
-var j3 = queue.Job{
+var j3 = queue.Task{
 	Tries:   0,
 	URL:     "http://10.0.2.15:8000/test",
 	Payload: string(j3TaskJ),
@@ -66,22 +66,22 @@ func TestInsertJobs(t *testing.T) {
 	defer c.Close()
 
 	j, _ := json.Marshal(j1)
-	_, err = c.Do("LPUSH", db.WaitingList, j)
+	_, err = c.Do("LPUSH", queue.WaitingList, j)
 	if err != nil {
 		t.Fatalf("Command failed: %s", err.Error())
 		return
 	}
 
 	j, _ = json.Marshal(j2)
-	_, err = c.Do("LPUSH", db.WaitingList, j)
+	_, err = c.Do("LPUSH", queue.WaitingList, j)
 	if err != nil {
 		t.Fatalf("Command failed: %s", err.Error())
 		return
 	}
 
 	j, _ = json.Marshal(j3)
-	for i := 0; i < 100000; i++ {
-		_, err = c.Do("LPUSH", db.WaitingList, j)
+	for i := 0; i < 100; i++ {
+		_, err = c.Do("LPUSH", queue.WaitingList, j)
 		if err != nil {
 			t.Fatalf("Command failed: %s", err.Error())
 			return

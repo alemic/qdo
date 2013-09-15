@@ -6,8 +6,6 @@ import (
 	"net"
 	"net/http"
 	"net/url"
-	"os"
-	"os/signal"
 	"time"
 
 	"github.com/borgenk/qdo/third_party/github.com/garyburd/redigo/redis"
@@ -18,233 +16,160 @@ import (
 
 const WaitingList = "waitinglist"
 const ProcessingList = "processinglist"
-const Schedulelist = "schedulelist"
-const ScheduleId = "scheduleid"
 
-type Config struct {
-	NWorker      int32         // Number of simultaneous workers processing tasks.
-	Throttle     time.Duration // Number of maxium task invocations from queue per second.
-	TaskTLimit   time.Duration // Duration allowed per task to complete.
-	TaskMaxTries int32         // Number of tries per task before giving up.
+type Conveyor struct {
+	// Prefix all conveyor keys. Example site name.
+	Prefix string `json: prefix`
+
+	// Conveyor name.
+	Name string `json: name`
+
+	// Conveyor settings.
+	Settings Config `json: config`
+
+	// Limit number of simultaneous workers processing tasks.
+	NotifyReady chan int `json: -`
 }
 
-type Job struct {
+type Config struct {
+	// Number of simultaneous workers processing tasks.
+	NWorker int32 `json: n_worker`
+
+	// Number of maxium task invocations from queue per second.
+	Throttle time.Duration `json: throttle`
+
+	// Duration allowed per task to complete.
+	TaskTLimit time.Duration `json: task_t_limit`
+
+	// Number of tries per task before giving up.
+	TaskMaxTries int32 `json: task_max_tries`
+}
+
+type Task struct {
 	URL     string `json: url`
 	Payload string `json: payload`
 	Tries   int32  `json: tries`
 	Delay   int32  `json: delay`
 }
 
-func Run(dbc db.Config, qc Config) {
-	db.ConnectPool(dbc)
-	var c redis.Conn
-	for {
-		c = db.Pool.Get()
-		err := c.Err()
-		if err != nil {
-			log.Error("", err)
-			time.Sleep(5 * time.Second)
-		} else {
-			defer c.Close()
-			break
-		}
+func StartConveyor(prefix string, name string, settings Config) error {
+	conveyor := &Conveyor{
+		Prefix:      prefix,
+		Name:        name,
+		Settings:    settings,
+		NotifyReady: make(chan int, settings.NWorker),
 	}
+	return conveyor.Start()
+}
 
+func (conv *Conveyor) Start() error {
 	// Treat existing tasks in processing list as failed. Reschedule to waiting
-	// queue.
-	_ = requeueAll(&c)
+	// queue. Also makes sure we have database connection before we go any
+	// further.
+	err := conv.reset()
+	if err != nil {
+		return err
+	}
 
 	// Start scheduler for delayed tasks.
+	// TODO: make this a struct. should be passed to request processer so it
+	// cant add itself to rescheduling.
 	go scheduler()
 
-	si := make(chan os.Signal)
-	signal.Notify(si, os.Interrupt)
-	signal.Notify(si, os.Kill)
-
-	// Limit number of simultaneous workers processing tasks.
-	wk := make(chan int, qc.NWorker)
-
 	for {
-		select {
-		case wk <- 1:
-			b, err := redis.Bytes(c.Do("BRPOPLPUSH", WaitingList,
-				ProcessingList, "0"))
-			if err != nil {
-				// No retry / reconnect logic yet.
-				log.Error("", err)
-				os.Exit(1)
-			}
-
-			go request(&qc, wk, b)
-
-			// Throttle task invocations per second.
-			time.Sleep(qc.Throttle)
-		case <-si:
-			log.Info("program killed")
-			os.Exit(0)
-		}
-
-	}
-}
-
-// Move all entries in processing list to waiting queue.
-func requeueAll(c *redis.Conn) error {
-	for {
-		s, err := (*c).Do("RPOPLPUSH", ProcessingList, WaitingList)
+		conv.NotifyReady <- 1
+		c := db.Pool.Get()
+		b, err := redis.Bytes(c.Do("BRPOPLPUSH", WaitingList, ProcessingList, "0"))
 		if err != nil {
-			log.Error("", err)
-			return err
+			c.Close()
+			log.Error("error while fetching new task", err)
+			time.Sleep(50 * time.Millisecond)
+			continue
 		}
-		if s == nil {
-			return nil
-		}
+
+		go conv.process(b)
+
+		// Throttle task invocations per second.
+		time.Sleep(conv.Settings.Throttle)
 	}
 }
 
-func scheduler() {
-	c := db.Pool.Get()
-	err := c.Err()
-	if err != nil {
-		log.Error("", err)
-		return
-	}
-	defer c.Close()
-
-	// Script arguments:
-	//      Schdule list
-	//      Timestamp now
-	//      Waiting list
-	var rescheduleLua = redis.NewScript(3,
-		`local jobs = redis.call("ZRANGEBYSCORE", KEYS[1], "-inf", KEYS[2])
-         if jobs then
-            for index = 1, #jobs do
-                local j
-                for i = 1, #jobs[index] do
-                    if jobs[index]:sub(i, i) == ":" then
-                        j = string.sub(jobs[index], i+1, -1)
-                        break
-                    end
-                end
-                local ok = redis.call("LPUSH", KEYS[3], j)
-                if ok then redis.call("ZREM", KEYS[1], jobs[index]) end
-            end
-         end`)
-
-	for {
-		now := int32(time.Now().Unix())
-		_, err = rescheduleLua.Do(c, Schedulelist, now, WaitingList)
-		if err != nil {
-			log.Error("", err)
-		}
-		time.Sleep(5 * time.Second)
-	}
-}
-
-func removeProcessing(c *redis.Conn, j []byte) error {
-	_, err := redis.Int((*c).Do("LREM", ProcessingList, "1", j))
-	if err != nil {
-		log.Error("", err)
-		return err
-	}
-	return nil
-}
-
-func requeueJob(c *redis.Conn, job Job) error {
-	j, err := json.Marshal(job)
-	if err != nil {
-		log.Error("", err)
-		return err
-	}
-	_, err = (*c).Do("LPUSH", WaitingList, j)
-	if err != nil {
-		log.Error("", err)
-		return err
-	}
-	return nil
-}
-
-func request(qc *Config, ch chan int, j []byte) {
-	defer func() { <-ch }()
+func (conv *Conveyor) process(data []byte) {
+	defer func() { <-conv.NotifyReady }()
 
 	c := db.Pool.Get()
-	err := c.Err()
-	if err != nil {
-		log.Error("", err)
-		return
-	}
 	defer c.Close()
 
-	job := Job{}
-	err = json.Unmarshal(j, &job)
+	task := &Task{}
+	err := json.Unmarshal(data, task)
 	if err != nil {
 		// Assume invalid job, discard it.
 		log.Error("invalid task format", err)
-		removeProcessing(&c, j)
+		conv.removeProcessing(&c, data)
 		return
 	}
 
-	_, err = url.Parse(job.URL)
+	_, err = url.Parse(task.URL)
 	if err != nil {
 		// Assume invalid job, discard it.
 		log.Error("invalid URL, discarding job", err)
-		removeProcessing(&c, j)
+		conv.removeProcessing(&c, data)
 		return
 	}
 
-	log.Infof("processing new task: %s", job.URL)
+	log.Infof("processing new task: %s", task.URL)
 
 	transport := http.Transport{
 		Dial: func(network, addr string) (net.Conn, error) {
-			return net.DialTimeout(network, addr, (*qc).TaskTLimit)
+			return net.DialTimeout(network, addr, conv.Settings.TaskTLimit)
 		},
 		Proxy: http.ProxyFromEnvironment,
-		ResponseHeaderTimeout: (*qc).TaskTLimit,
+		ResponseHeaderTimeout: conv.Settings.TaskTLimit,
 	}
 	client := http.Client{
 		Transport: &transport,
 	}
-	resp, err := client.Post(job.URL, "application/json",
-		bytes.NewReader([]byte(job.Payload)))
+	resp, err := client.Post(task.URL, "application/json",
+		bytes.NewReader([]byte(task.Payload)))
 	if err == nil {
 		resp.Body.Close()
 	}
 
 	if err == nil && resp.StatusCode >= 200 && resp.StatusCode <= 299 {
-		removeProcessing(&c, j)
+		conv.removeProcessing(&c, data)
 		log.Infof("task completed successfully: %s", resp.Status)
 		return
 	} else if err == nil && resp.StatusCode >= 400 && resp.StatusCode <= 499 {
-		removeProcessing(&c, j)
+		conv.removeProcessing(&c, data)
 		log.Infof("task failed, request invalid: %s", resp.Status)
 		return
 	}
 
-	if job.Tries >= (*qc).TaskMaxTries {
-		// Remove it from ProcessingList
-		log.Infof("task reached max tries: %d", job.Tries)
-		removeProcessing(&c, j)
-		// TODO: store/dump task somewhere?
+	if conv.Settings.TaskMaxTries > 0 && task.Tries >= conv.Settings.TaskMaxTries {
+		// Remove from ProcessingList.
+		log.Infof("task reached max tries: %d", task.Tries)
+		conv.removeProcessing(&c, data)
 		return
 	}
 
-	if job.Delay == 0 {
-		job.Delay = 1
+	if task.Delay == 0 {
+		task.Delay = 1
 	}
-	job.Delay = job.Delay * 2
-	job.Tries = job.Tries + 1
+	task.Delay = task.Delay * 2
+	task.Tries = task.Tries + 1
 
-	rj, err := json.Marshal(job)
+	updatedTask, err := json.Marshal(task)
 	if err != nil {
 		log.Error("", err)
 		return
 	}
-	schedTs := int32(time.Now().Unix()) + job.Delay
+	schedTs := int32(time.Now().Unix()) + task.Delay
 
-	// Reschedule job.
+	// Reschedule task.
 	//
 	// 1. Create new schedule id.
-	// 2. Add job to schdule list - format: <timestamp> - <id>:<job>.
-	// 3. Remove old job from processing list.
+	// 2. Add task to schdule list - format: <timestamp> - <id>:<task>.
+	// 3. Remove old task from processing list.
 	//
 	// Script arguments:
 	//      Schedule id
@@ -252,19 +177,49 @@ func request(qc *Config, ch chan int, j []byte) {
 	//      Schedule list
 	//      Schedule timestamp
 	//      Processing list
-	//      Old job bytes
+	//      Old task bytes
 	var delayRetry = redis.NewScript(6,
 		`local id = redis.call("INCR", KEYS[1])
-         local job = id .. ":" .. KEYS[2]
-         redis.call('ZADD', KEYS[3], KEYS[4], job)
+         local task = id .. ":" .. KEYS[2]
+         redis.call('ZADD', KEYS[3], KEYS[4], task)
          redis.call('LREM', KEYS[5], 1, KEYS[6])`)
 
-	_, err = delayRetry.Do(c, ScheduleId, rj, Schedulelist, schedTs,
-		ProcessingList, j)
+	_, err = delayRetry.Do(c, ScheduleId, updatedTask, Schedulelist, schedTs,
+		ProcessingList, data)
 	if err != nil {
 		log.Infof("zombie left in processing: %s", err)
 		return
 	}
 
-	log.Infof("task failed, rescheduled for retry in %d seconds", job.Delay)
+	log.Infof("task failed, rescheduled for retry in %d seconds", task.Delay)
+}
+
+func (conv *Conveyor) reset() error {
+	for {
+		c := db.Pool.Get()
+		err := c.Err()
+		if err != nil {
+			log.Error("", err)
+			time.Sleep(5 * time.Second)
+		} else {
+			s, err := c.Do("RPOPLPUSH", ProcessingList, WaitingList)
+			if err != nil {
+				log.Error("", err)
+				return err
+			} else if s == nil {
+				// All done, processing is empty.
+				return nil
+			}
+		}
+		c.Close()
+	}
+}
+
+func (conv *Conveyor) removeProcessing(c *redis.Conn, data []byte) error {
+	_, err := redis.Int((*c).Do("LREM", ProcessingList, "1", data))
+	if err != nil {
+		log.Error("", err)
+		return err
+	}
+	return nil
 }
