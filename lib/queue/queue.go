@@ -29,10 +29,10 @@ type Config struct {
 }
 
 type Job struct {
-	URL     string
-	Payload string
-	Tries   int32
-	Delay   int32
+	URL     string `json: url`
+	Payload string `json: payload`
+	Tries   int32  `json: tries`
+	Delay   int32  `json: delay`
 }
 
 func Run(dbc db.Config, qc Config) {
