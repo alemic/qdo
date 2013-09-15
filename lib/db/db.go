@@ -20,7 +20,6 @@ var Pool *redis.Pool
 
 func ConnectPool(dbc Config) {
 	Pool = &redis.Pool{
-		MaxActive:   dbc.Connections,
 		MaxIdle:     dbc.Connections,
 		IdleTimeout: 0,
 		Dial: func() (redis.Conn, error) {
