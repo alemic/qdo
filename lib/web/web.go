@@ -6,7 +6,7 @@ import (
 	"net/http"
 	"strconv"
 
-	"github.com/borgenk/qdo/third_party/github.com/garyburd/redigo/redis"
+	_ "github.com/borgenk/qdo/third_party/github.com/garyburd/redigo/redis"
 	"github.com/borgenk/qdo/third_party/github.com/gorilla/mux"
 
 	"github.com/borgenk/qdo/lib/db"
@@ -109,11 +109,17 @@ func createConveyor(w http.ResponseWriter, r *http.Request) {
 	http.Redirect(w, r, "/", http.StatusFound)
 }
 
+func createTask(w http.ResponseWriter, r *http.Request) {
+	vars := mux.Vars(r)
+	_ = vars["id"]
+}
+
 func Run(port int, documentRoot string) {
 	templates = template.Must(template.ParseFiles(documentRoot + "index.html"))
 	r := mux.NewRouter()
 	r.HandleFunc("/", mainPage).Methods("GET")
 	r.HandleFunc("/api/conveyor", createConveyor).Methods("POST")
+	r.HandleFunc("/api/conveyor/{id}/task", createTask).Methods("POST")
 
 	http.Handle("/", r)
 	http.ListenAndServe(fmt.Sprintf(":%d", port), nil)
