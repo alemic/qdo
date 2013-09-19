@@ -20,8 +20,10 @@ type Manager struct {
 	Conveyors   *[]Conveyor
 }
 
+var manager *Manager
+
 func StartManager(name string) error {
-	manager := &Manager{
+	manager = &Manager{
 		Name:        name,
 		PendingList: name + ":" + PendingQueueList,
 		ActiveList:  name + ":" + ActiveQueueList,
