@@ -49,11 +49,10 @@ var j3 = queue.Task{
 
 func TestInsertJobs(t *testing.T) {
 	dbc := db.Config{
-		Host:        dbDefaultHost,
-		Port:        dbDefaultPort,
-		Pass:        dbDefaultPass,
-		Idx:         dbDefaultIdx,
-		Connections: qDefaultNWorkers + 3,
+		Host: dbDefaultHost,
+		Port: dbDefaultPort,
+		Pass: dbDefaultPass,
+		Idx:  dbDefaultIdx,
 	}
 	db.ConnectPool(dbc)
 
@@ -66,22 +65,22 @@ func TestInsertJobs(t *testing.T) {
 	defer c.Close()
 
 	j, _ := json.Marshal(j1)
-	_, err = c.Do("LPUSH", queue.WaitingList, j)
+	_, err = c.Do("LPUSH", "dev:test:"+queue.WaitingList, j)
 	if err != nil {
 		t.Fatalf("Command failed: %s", err.Error())
 		return
 	}
 
 	j, _ = json.Marshal(j2)
-	_, err = c.Do("LPUSH", queue.WaitingList, j)
+	_, err = c.Do("LPUSH", "dev:test:"+queue.WaitingList, j)
 	if err != nil {
 		t.Fatalf("Command failed: %s", err.Error())
 		return
 	}
 
 	j, _ = json.Marshal(j3)
-	for i := 0; i < 100; i++ {
-		_, err = c.Do("LPUSH", queue.WaitingList, j)
+	for i := 0; i < 10; i++ {
+		_, err = c.Do("LPUSH", "dev:test:"+queue.WaitingList, j)
 		if err != nil {
 			t.Fatalf("Command failed: %s", err.Error())
 			return

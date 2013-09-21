@@ -17,8 +17,6 @@ import (
 
 const WaitingList = "queue:waitinglist"
 const ProcessingList = "queue:processinglist"
-const ScheduleId = "queue:scheduleid"
-const Schedulelist = "queue:schedulelist"
 
 const LogMessageList = "log"
 const StatsTotal = "stat:total"
@@ -46,8 +44,8 @@ type Conveyor struct {
 	// Conveyor processing list name.
 	ProcessingList string
 
-	ScheduleId   string
-	Schedulelist string
+	// Scheduler.
+	Scheduler *Scheduler
 }
 
 type Config struct {
@@ -105,14 +103,13 @@ func StartConveyor(prefix string, name string, settings Config) {
 		Settings:       settings,
 		WaitingList:    prefix + ":" + name + ":" + WaitingList,
 		ProcessingList: prefix + ":" + name + ":" + ProcessingList,
-		ScheduleId:     prefix + ":" + name + ":" + ScheduleId,
-		Schedulelist:   prefix + ":" + name + ":" + Schedulelist,
 	}
 	conveyor.Start()
 }
 
 func (conv *Conveyor) Start() error {
-	log.Infof("starting conveyor %s", conv.Name)
+	log.Infof("starting conveyor \"%s\" with %d worker(s)", conv.Name,
+		conv.Settings.NWorker)
 
 	conv.NotifyReady = make(chan int, conv.Settings.NWorker)
 
@@ -124,10 +121,9 @@ func (conv *Conveyor) Start() error {
 		return err
 	}
 
-	// Start scheduler for delayed tasks.
-	// TODO: make this a struct. should be passed to request processer so it
-	// cant add itself to rescheduling.
-	go conv.scheduler()
+	// Start scheduler for delayed or rescheduled tasks.
+	conv.Scheduler = NewScheduler(conv.Prefix, conv.Name)
+	go conv.Scheduler.Start(conv.WaitingList)
 
 	for {
 		conv.NotifyReady <- 1
@@ -207,46 +203,11 @@ func (conv *Conveyor) process(data []byte) {
 		return
 	}
 
-	if task.Delay == 0 {
-		task.Delay = 1
-	}
-	task.Delay = task.Delay * 2
-	task.Tries = task.Tries + 1
-
-	updatedTask, err := json.Marshal(task)
+	delay, err := conv.Scheduler.Reschedule(conv.ProcessingList, task, data)
 	if err != nil {
-		log.Error("", err)
-		return
+		log.Info("task failed")
 	}
-	schedTs := int32(time.Now().Unix()) + task.Delay
-
-	// Reschedule task.
-	//
-	// 1. Create new schedule id.
-	// 2. Add task to schdule list - format: <timestamp> - <id>:<task>.
-	// 3. Remove old task from processing list.
-	//
-	// Script arguments:
-	//      Schedule id
-	//      Job bytes
-	//      Schedule list
-	//      Schedule timestamp
-	//      Processing list
-	//      Old task bytes
-	var delayRetry = redis.NewScript(6,
-		`local id = redis.call("INCR", KEYS[1])
-         local task = id .. ":" .. KEYS[2]
-         redis.call('ZADD', KEYS[3], KEYS[4], task)
-         redis.call('LREM', KEYS[5], 1, KEYS[6])`)
-
-	_, err = delayRetry.Do(c, conv.ScheduleId, updatedTask, conv.Schedulelist,
-		schedTs, conv.ProcessingList, data)
-	if err != nil {
-		log.Infof("zombie left in processing: %s", err)
-		return
-	}
-
-	log.Infof("task failed, rescheduled for retry in %d seconds", task.Delay)
+	log.Infof("task failed, rescheduled for retry in %d seconds", delay)
 }
 
 func (conv *Conveyor) reset() error {
@@ -277,37 +238,4 @@ func (conv *Conveyor) removeProcessing(c *redis.Conn, data []byte) error {
 		return err
 	}
 	return nil
-}
-
-func (conv *Conveyor) scheduler() {
-	// Script arguments:
-	//      Schdule list
-	//      Timestamp now
-	//      Waiting list
-	var rescheduleLua = redis.NewScript(3,
-		`local jobs = redis.call("ZRANGEBYSCORE", KEYS[1], "-inf", KEYS[2])
-         if jobs then
-            for index = 1, #jobs do
-                local j
-                for i = 1, #jobs[index] do
-                    if jobs[index]:sub(i, i) == ":" then
-                        j = string.sub(jobs[index], i+1, -1)
-                        break
-                    end
-                end
-                local ok = redis.call("LPUSH", KEYS[3], j)
-                if ok then redis.call("ZREM", KEYS[1], jobs[index]) end
-            end
-         end`)
-
-	for {
-		c := db.Pool.Get()
-		now := int32(time.Now().Unix())
-		_, err := rescheduleLua.Do(c, conv.Schedulelist, now, conv.WaitingList)
-		c.Close()
-		if err != nil {
-			log.Error("", err)
-		}
-		time.Sleep(5 * time.Second)
-	}
 }
