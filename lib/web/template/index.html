@@ -14,7 +14,11 @@
 
     <form id="create-conveyor-form" class="conveyor-form" action="/api/conveyor" method="post">
       <div class="input">
-        <input type="text" name="name" id="name" placeholder="Name" title="asdad" value="" pattern="[a-zA-Z0-9\-]{3,}" required autofocus>
+        <input type="text" name="manager-name" id="manager-name" placeholder="Manager name" title="Manager name" value="" pattern="[a-zA-Z0-9\-]{3,}" required autofocus>
+        <div class="description">Name of the queue.</div>
+      </div>
+      <div class="input">
+        <input type="text" name="conveyor-id" id="conveyor-id" placeholder="Conveyor ID" title="Conveyor ID" value="" pattern="[a-zA-Z0-9\-]{3,}" required autofocus>
         <div class="description">Name of the queue.</div>
       </div>
       <div class="input">

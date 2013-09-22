@@ -18,7 +18,7 @@ type Manager struct {
 	Name        string
 	PendingList string
 	ActiveList  string
-	Conveyors   *[]Conveyor
+	Conveyors   []*Conveyor
 }
 
 var manager *Manager
@@ -77,14 +77,15 @@ func (man *Manager) Discover() {
 }
 
 func (man *Manager) ActivateConveyor(data []byte) {
-	settings := &Config{}
-	err := json.Unmarshal(data, settings)
+	conv := &Conveyor{}
+	err := json.Unmarshal(data, conv)
 	if err != nil {
 		log.Error("invalid config format", err)
 		man.Remove(data)
 		return
 	}
-	go StartConveyor(man.Name, settings.Name, *settings)
+	man.Conveyors = append(man.Conveyors, conv)
+	go conv.Start()
 }
 
 func (man *Manager) Remove(data []byte) error {
@@ -98,8 +99,9 @@ func (man *Manager) Remove(data []byte) error {
 	return nil
 }
 
-func AddConveyor(settings *Config) error {
-	s, err := json.Marshal(settings)
+func AddConveyor(managerName, conveyorID string, config *Config) error {
+	conveyor := NewConveyor(managerName, conveyorID, config)
+	conv, err := json.Marshal(conveyor)
 	if err != nil {
 		log.Error("", err)
 		return err
@@ -112,7 +114,7 @@ func AddConveyor(settings *Config) error {
 	c := db.Pool.Get()
 	defer c.Close()
 
-	_, err = redis.Int(c.Do("LPUSH", manager.PendingList, s))
+	_, err = redis.Int(c.Do("LPUSH", manager.PendingList, conv))
 	if err != nil {
 		log.Error("", err)
 		return err
@@ -120,11 +122,10 @@ func AddConveyor(settings *Config) error {
 	return nil
 }
 
-func GetAllConveyor() ([]Config, error) {
+func GetAllConveyor() ([]Conveyor, error) {
 	if db.Pool == nil {
 		return nil, errors.New("Database not initialized")
 	}
-
 	c := db.Pool.Get()
 	defer c.Close()
 
@@ -136,7 +137,7 @@ func GetAllConveyor() ([]Config, error) {
 
 	// Make a new slice of equal length as result. Type assert to []byte and
 	// JSON decode into slice element.
-	resp := make([]Config, len(reply))
+	resp := make([]Conveyor, len(reply))
 	for i, v := range reply {
 		err = json.Unmarshal(v.([]byte), &resp[i])
 		if err != nil {
@@ -145,4 +146,24 @@ func GetAllConveyor() ([]Config, error) {
 		}
 	}
 	return resp, nil
+}
+
+func GetConveyor(id string) (*Conveyor, error) {
+	if db.Pool == nil {
+		return nil, errors.New("Database not initialized")
+	}
+	c := db.Pool.Get()
+	defer c.Close()
+
+	conveyors, err := GetAllConveyor()
+	if err != nil {
+		return nil, err
+	}
+
+	for _, val := range conveyors {
+		if val.ID == id {
+			return &val, nil
+		}
+	}
+	return nil, nil
 }

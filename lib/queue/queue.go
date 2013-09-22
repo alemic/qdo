@@ -25,31 +25,32 @@ const StatsAvgTime = "stat:avgtime"
 const StatsAvgTimeRecent = "stat:avgtimerecent"
 
 type Conveyor struct {
+	// Define resource.
+	Object string `json:"object`
+
 	// Prefix all conveyor keys. Example site name.
 	Prefix string `json:"prefix"`
 
-	// Conveyor name.
-	Name string `json:"name"`
+	// Conveyor identification.
+	ID string `json:"id"`
 
-	// Conveyor settings.
-	Settings Config `json:"config"`
+	// Conveyor configurations.
+	Config Config `json:"config"`
 
 	// Limit number of simultaneous workers processing tasks.
 	NotifyReady chan int `json:"-"`
 
 	// Conveyor waiting list name.
-	WaitingList string
+	WaitingList string `json:"waiting_list"`
 
 	// Conveyor processing list name.
-	ProcessingList string
+	ProcessingList string `json:"processing_list"`
 
 	// Scheduler.
-	Scheduler *Scheduler
+	Scheduler *Scheduler `json:"scheduler"`
 }
 
 type Config struct {
-	Name string `json:"name"`
-
 	// Number of simultaneous workers processing tasks.
 	NWorker int32 `json:"n_worker"`
 
@@ -73,22 +74,24 @@ type Task struct {
 	Delay   int32  `json:"delay"`
 }
 
-func StartConveyor(prefix string, name string, settings Config) {
-	conveyor := &Conveyor{
+func NewConveyor(prefix, id string, config *Config) *Conveyor {
+	conv := &Conveyor{
+		Object:         "Conveyor",
 		Prefix:         prefix,
-		Name:           name,
-		Settings:       settings,
-		WaitingList:    prefix + ":" + name + ":" + WaitingList,
-		ProcessingList: prefix + ":" + name + ":" + ProcessingList,
+		ID:             id,
+		Config:         *config,
+		WaitingList:    prefix + ":" + id + ":" + WaitingList,
+		ProcessingList: prefix + ":" + id + ":" + ProcessingList,
+		Scheduler:      NewScheduler(prefix, id),
 	}
-	conveyor.Start()
+	return conv
 }
 
 func (conv *Conveyor) Start() error {
-	log.Infof("starting conveyor \"%s\" with %d worker(s)", conv.Name,
-		conv.Settings.NWorker)
+	log.Infof("starting conveyor \"%s\" with %d worker(s)", conv.ID,
+		conv.Config.NWorker)
 
-	conv.NotifyReady = make(chan int, conv.Settings.NWorker)
+	conv.NotifyReady = make(chan int, conv.Config.NWorker)
 
 	// Treat existing tasks in processing list as failed. Reschedule to waiting
 	// queue. Also makes sure we have database connection before we go any
@@ -99,7 +102,6 @@ func (conv *Conveyor) Start() error {
 	}
 
 	// Start scheduler for delayed or rescheduled tasks.
-	conv.Scheduler = NewScheduler(conv.Prefix, conv.Name)
 	go conv.Scheduler.Start(conv.WaitingList)
 
 	for {
@@ -116,8 +118,8 @@ func (conv *Conveyor) Start() error {
 		go conv.process(b)
 
 		// Throttle task invocations per second.
-		if conv.Settings.Throttle > 0 {
-			time.Sleep(time.Duration(time.Second / (time.Duration(conv.Settings.Throttle) * time.Second)))
+		if conv.Config.Throttle > 0 {
+			time.Sleep(time.Duration(time.Second / (time.Duration(conv.Config.Throttle) * time.Second)))
 		}
 	}
 }
@@ -149,10 +151,10 @@ func (conv *Conveyor) process(data []byte) {
 
 	transport := http.Transport{
 		Dial: func(network, addr string) (net.Conn, error) {
-			return net.DialTimeout(network, addr, time.Duration(conv.Settings.TaskTLimit)*time.Second)
+			return net.DialTimeout(network, addr, time.Duration(conv.Config.TaskTLimit)*time.Second)
 		},
 		Proxy: http.ProxyFromEnvironment,
-		ResponseHeaderTimeout: time.Duration(conv.Settings.TaskTLimit) * time.Second,
+		ResponseHeaderTimeout: time.Duration(conv.Config.TaskTLimit) * time.Second,
 	}
 	client := http.Client{
 		Transport: &transport,
@@ -173,7 +175,7 @@ func (conv *Conveyor) process(data []byte) {
 		return
 	}
 
-	if conv.Settings.TaskMaxTries > 0 && task.Tries >= conv.Settings.TaskMaxTries {
+	if conv.Config.TaskMaxTries > 0 && task.Tries >= conv.Config.TaskMaxTries {
 		// Remove from ProcessingList.
 		log.Infof("task reached max tries: %d", task.Tries)
 		conv.removeProcessing(&c, data)

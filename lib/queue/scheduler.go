@@ -15,10 +15,10 @@ const ScheduleList = "queue:schedulelist"
 
 type Scheduler struct {
 	// Conveyor scheduler id name.
-	ScheduleId string `json:"scheduleId"`
+	ScheduleId string `json:"schedule_id"`
 
 	// Conveyor scheduler list name.
-	ScheduleList string `json:"scheduleList"`
+	ScheduleList string `json:"schedule_list"`
 
 	// How often scheduler checks schedule list in seconds.
 	Rate time.Duration `json:"rate"`
