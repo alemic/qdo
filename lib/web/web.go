@@ -60,7 +60,8 @@ func Run(port int, documentRoot string) {
 	r.HandleFunc("/api/conveyor", getAllConveyor).Methods("GET")
 	r.HandleFunc("/api/conveyor", createConveyor).Methods("POST")
 	r.HandleFunc("/api/conveyor/{conveyor_id}", getConveyor).Methods("GET")
-	r.HandleFunc("/api/conveyor/{id}/task", createTask).Methods("POST")
+	r.HandleFunc("/api/conveyor/{conveyor_id}/task", getAllTasks).Methods("GET")
+	r.HandleFunc("/api/conveyor/{conveyor_id}/task", createTask).Methods("POST")
 
 	http.Handle("/", r)
 	http.ListenAndServe(fmt.Sprintf(":%d", port), nil)

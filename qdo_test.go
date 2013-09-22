@@ -20,7 +20,7 @@ var j1Task = debugTask{
 var j1TaskJ, _ = json.Marshal(j1Task)
 var j1 = queue.Task{
 	Tries:   0,
-	URL:     "http://10.0.2.15:8000/test",
+	Target:  "http://10.0.2.15:8000/test",
 	Payload: string(j1TaskJ),
 	Delay:   0,
 }
@@ -32,7 +32,7 @@ var j2Task = debugTask{
 var j2TaskJ, _ = json.Marshal(j2Task)
 var j2 = queue.Task{
 	Tries:   0,
-	URL:     "http://10.0.2.15:8000/test",
+	Target:  "http://10.0.2.15:8000/test",
 	Payload: string(j2TaskJ),
 	Delay:   0,
 }
@@ -42,7 +42,7 @@ var j3Task = debugTask{}
 var j3TaskJ, _ = json.Marshal(j3Task)
 var j3 = queue.Task{
 	Tries:   0,
-	URL:     "http://10.0.2.15:8000/test",
+	Target:  "http://10.0.2.15:8000/test",
 	Payload: string(j3TaskJ),
 	Delay:   0,
 }
@@ -79,7 +79,7 @@ func TestInsertJobs(t *testing.T) {
 	}
 
 	j, _ = json.Marshal(j3)
-	for i := 0; i < 10; i++ {
+	for i := 0; i < 1000; i++ {
 		_, err = c.Do("LPUSH", "dev:test:"+queue.WaitingList, j)
 		if err != nil {
 			t.Fatalf("Command failed: %s", err.Error())

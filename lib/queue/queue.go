@@ -3,6 +3,7 @@ package queue
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"net"
 	"net/http"
 	"net/url"
@@ -68,7 +69,7 @@ type Config struct {
 }
 
 type Task struct {
-	URL     string `json:"url"`
+	Target  string `json:"target"`
 	Payload string `json:"payload"`
 	Tries   int32  `json:"tries"`
 	Delay   int32  `json:"delay"`
@@ -133,21 +134,21 @@ func (conv *Conveyor) process(data []byte) {
 	task := &Task{}
 	err := json.Unmarshal(data, task)
 	if err != nil {
-		// Assume invalid job, discard it.
+		// Assume invalid task, discard it.
 		log.Error("invalid task format", err)
 		conv.removeProcessing(&c, data)
 		return
 	}
 
-	_, err = url.Parse(task.URL)
+	_, err = url.Parse(task.Target)
 	if err != nil {
-		// Assume invalid job, discard it.
-		log.Error("invalid URL, discarding job", err)
+		// Assume invalid task, discard it.
+		log.Error("invalid target URL, discarding task", err)
 		conv.removeProcessing(&c, data)
 		return
 	}
 
-	log.Infof("processing new task: %s", task.URL)
+	log.Infof("processing new task: %s", task.Target)
 
 	transport := http.Transport{
 		Dial: func(network, addr string) (net.Conn, error) {
@@ -159,7 +160,7 @@ func (conv *Conveyor) process(data []byte) {
 	client := http.Client{
 		Transport: &transport,
 	}
-	resp, err := client.Post(task.URL, "application/json",
+	resp, err := client.Post(task.Target, "application/json",
 		bytes.NewReader([]byte(task.Payload)))
 	if err == nil {
 		resp.Body.Close()
@@ -217,4 +218,31 @@ func (conv *Conveyor) removeProcessing(c *redis.Conn, data []byte) error {
 		return err
 	}
 	return nil
+}
+
+func GetAllTasks(conveyorID string) ([]Task, error) {
+	if db.Pool == nil {
+		return nil, errors.New("Database not initialized")
+	}
+	c := db.Pool.Get()
+	defer c.Close()
+
+	queueList := manager.Name + ":" + conveyorID + ":" + WaitingList
+	reply, err := redis.Values(c.Do("LRANGE", queueList, "0", "-1"))
+	if err != nil {
+		log.Error("", err)
+		return nil, err
+	}
+
+	// Make a new slice of equal length as result. Type assert to []byte and
+	// JSON decode into slice element.
+	resp := make([]Task, len(reply))
+	for i, v := range reply {
+		err = json.Unmarshal(v.([]byte), &resp[i])
+		if err != nil {
+			log.Error("", err)
+			return nil, err
+		}
+	}
+	return resp, nil
 }

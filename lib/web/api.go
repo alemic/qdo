@@ -44,9 +44,20 @@ func ReturnJSON(w http.ResponseWriter, r *http.Request, resp interface{}) {
 	}
 }
 
+func getAllTasks(w http.ResponseWriter, r *http.Request) {
+	vars := mux.Vars(r)
+	conveyorID := vars["conveyor_id"]
+
+	res, err := queue.GetAllTasks(conveyorID)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+	}
+	ReturnJSON(w, r, JSONListResult("/api/conveyor/"+conveyorID+"/task", len(res), res))
+}
+
 func createTask(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
-	_ = vars["id"]
+	_ = vars["conveyor_id"]
 }
 
 // List all active conveyors.
