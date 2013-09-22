@@ -1,12 +1,12 @@
 package web
 
 import (
+	"encoding/json"
 	"fmt"
 	"html/template"
 	"net/http"
 	"strconv"
 
-	_ "github.com/borgenk/qdo/third_party/github.com/garyburd/redigo/redis"
 	"github.com/borgenk/qdo/third_party/github.com/gorilla/mux"
 
 	"github.com/borgenk/qdo/lib/db"
@@ -37,9 +37,6 @@ func mainPage(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	//c := db.Pool.Get()
-	//defer c.Close()
-
 	h := Header{
 		Title: "QDo",
 	}
@@ -50,6 +47,17 @@ func mainPage(w http.ResponseWriter, r *http.Request) {
 	renderTemplate(w, "index", p)
 }
 
+// API handler for GET /api/conveyor.
+func getAllConveyor(w http.ResponseWriter, r *http.Request) {
+	res, err := queue.GetAllConveyor()
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+	}
+
+	ReturnJSONList(w, r, "/api/conveyor", len(res), res)
+}
+
+// API handler for POST /api/conveyor.
 func createConveyor(w http.ResponseWriter, r *http.Request) {
 	settings := &queue.Config{
 		Name: r.FormValue("name"),
@@ -118,9 +126,41 @@ func Run(port int, documentRoot string) {
 	templates = template.Must(template.ParseFiles(documentRoot + "index.html"))
 	r := mux.NewRouter()
 	r.HandleFunc("/", mainPage).Methods("GET")
+	r.HandleFunc("/api/conveyor", getAllConveyor).Methods("GET")
 	r.HandleFunc("/api/conveyor", createConveyor).Methods("POST")
 	r.HandleFunc("/api/conveyor/{id}/task", createTask).Methods("POST")
 
 	http.Handle("/", r)
 	http.ListenAndServe(fmt.Sprintf(":%d", port), nil)
+}
+
+type jsonResult struct {
+	Object string      `json:"object"`
+	URL    string      `json:"url"`
+	Count  int         `json:"count"`
+	Data   interface{} `json:"data"`
+}
+
+func ReturnJSONList(w http.ResponseWriter, r *http.Request, resource string,
+	count int, data interface{}) {
+	resp := jsonResult{
+		Object: "list",
+		URL:    resource,
+		Count:  count,
+		Data:   data,
+	}
+
+	pretty := r.FormValue("pretty")
+	if pretty != "" {
+		b, err := json.MarshalIndent(resp, "", " ")
+		if err != nil {
+			http.Error(w, "", http.StatusInternalServerError)
+			return
+		}
+		w.Write(b)
+	} else {
+		w.Header().Set("Content-Type", "application/json; charset=utf-8")
+		w.WriteHeader(http.StatusOK)
+		json.NewEncoder(w).Encode(resp)
+	}
 }

@@ -3,7 +3,6 @@ package queue
 import (
 	"bytes"
 	"encoding/json"
-	"errors"
 	"net"
 	"net/http"
 	"net/url"
@@ -72,28 +71,6 @@ type Task struct {
 	Payload string `json:"payload"`
 	Tries   int32  `json:"tries"`
 	Delay   int32  `json:"delay"`
-}
-
-func AddConveyor(settings *Config) error {
-	s, err := json.Marshal(settings)
-	if err != nil {
-		log.Error("", err)
-		return err
-	}
-
-	if db.Pool == nil {
-		return errors.New("Database not initialized")
-	}
-
-	c := db.Pool.Get()
-	defer c.Close()
-
-	_, err = redis.Int(c.Do("LPUSH", manager.PendingList, s))
-	if err != nil {
-		log.Error("", err)
-		return err
-	}
-	return nil
 }
 
 func StartConveyor(prefix string, name string, settings Config) {

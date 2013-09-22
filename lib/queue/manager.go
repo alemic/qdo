@@ -2,6 +2,7 @@ package queue
 
 import (
 	"encoding/json"
+	"errors"
 	"time"
 
 	"github.com/borgenk/qdo/third_party/github.com/garyburd/redigo/redis"
@@ -95,4 +96,53 @@ func (man *Manager) Remove(data []byte) error {
 		return err
 	}
 	return nil
+}
+
+func AddConveyor(settings *Config) error {
+	s, err := json.Marshal(settings)
+	if err != nil {
+		log.Error("", err)
+		return err
+	}
+
+	if db.Pool == nil {
+		return errors.New("Database not initialized")
+	}
+
+	c := db.Pool.Get()
+	defer c.Close()
+
+	_, err = redis.Int(c.Do("LPUSH", manager.PendingList, s))
+	if err != nil {
+		log.Error("", err)
+		return err
+	}
+	return nil
+}
+
+func GetAllConveyor() ([]Config, error) {
+	if db.Pool == nil {
+		return nil, errors.New("Database not initialized")
+	}
+
+	c := db.Pool.Get()
+	defer c.Close()
+
+	reply, err := redis.Values(c.Do("LRANGE", manager.ActiveList, "0", "-1"))
+	if err != nil {
+		log.Error("", err)
+		return nil, err
+	}
+
+	// Make a new slice of equal length as result. Type assert to []byte and
+	// JSON decode into slice element.
+	resp := make([]Config, len(reply))
+	for i, v := range reply {
+		err = json.Unmarshal(v.([]byte), &resp[i])
+		if err != nil {
+			log.Error("", err)
+			return nil, err
+		}
+	}
+	return resp, nil
 }
