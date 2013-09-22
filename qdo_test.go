@@ -79,7 +79,7 @@ func TestInsertJobs(t *testing.T) {
 	}
 
 	j, _ = json.Marshal(j3)
-	for i := 0; i < 1000; i++ {
+	for i := 0; i < 10; i++ {
 		_, err = c.Do("LPUSH", "dev:test:"+queue.WaitingList, j)
 		if err != nil {
 			t.Fatalf("Command failed: %s", err.Error())

@@ -44,6 +44,28 @@ func ReturnJSON(w http.ResponseWriter, r *http.Request, resp interface{}) {
 	}
 }
 
+func getStats(w http.ResponseWriter, r *http.Request) {
+	vars := mux.Vars(r)
+	conveyorID := vars["conveyor_id"]
+
+	conveyor, err := queue.GetConveyor(conveyorID)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	if conveyor == nil {
+		http.Error(w, err.Error(), http.StatusNotFound)
+		return
+	}
+
+	res, err := conveyor.Stats()
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	ReturnJSON(w, r, res)
+}
+
 func getAllTasks(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
 	conveyorID := vars["conveyor_id"]
@@ -51,6 +73,7 @@ func getAllTasks(w http.ResponseWriter, r *http.Request) {
 	res, err := queue.GetAllTasks(conveyorID)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
 	}
 	ReturnJSON(w, r, JSONListResult("/api/conveyor/"+conveyorID+"/task", len(res), res))
 }
@@ -66,6 +89,7 @@ func getAllConveyor(w http.ResponseWriter, r *http.Request) {
 	res, err := queue.GetAllConveyor()
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
 	}
 	ReturnJSON(w, r, JSONListResult("/api/conveyor", len(res), res))
 }
