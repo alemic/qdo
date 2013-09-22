@@ -21,10 +21,14 @@ type Page struct {
 	Length int
 }
 
-var templates *template.Template
+var Templates = make(map[string]*template.Template)
 
-func renderTemplate(w http.ResponseWriter, tmpl string, p *Page) {
-	err := templates.ExecuteTemplate(w, tmpl, p)
+func RegisterTemplate(name string, t *template.Template) {
+	Templates[name] = t
+}
+
+func RenderTemplate(w http.ResponseWriter, tmpl string, p interface{}) {
+	err := Templates[tmpl].ExecuteTemplate(w, "layout", p)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 	}
@@ -42,18 +46,33 @@ func MainPage(w http.ResponseWriter, r *http.Request) {
 		Header: h,
 		Length: 10,
 	}
-	renderTemplate(w, "index", p)
+	RenderTemplate(w, "index.html", p)
+}
+
+func NewConveyor(w http.ResponseWriter, r *http.Request) {
+	h := Header{
+		Title: "QDo",
+	}
+	p := &Page{
+		Header: h,
+	}
+	RenderTemplate(w, "conveyor_form.html", p)
 }
 
 func CreateNewConveyor(w http.ResponseWriter, r *http.Request) {
 	createConveyor(w, r)
-	http.Redirect(w, r, "/", http.StatusFound)
 }
 
 func Run(port int, documentRoot string) {
-	templates = template.Must(template.ParseFiles(documentRoot + "index.html"))
+	RegisterTemplate("index.html", template.Must(template.ParseFiles(
+		documentRoot+"index.html", documentRoot+"layout.html")))
+
+	RegisterTemplate("conveyor_form.html", template.Must(template.ParseFiles(
+		documentRoot+"conveyor_form.html", documentRoot+"layout.html")))
+
 	r := mux.NewRouter()
 	r.HandleFunc("/", MainPage).Methods("GET")
+	r.HandleFunc("/conveyor/new", NewConveyor).Methods("GET")
 	r.HandleFunc("/conveyor/new", CreateNewConveyor).Methods("POST")
 
 	// API Paths.

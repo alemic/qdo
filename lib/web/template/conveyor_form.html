@@ -1,0 +1,31 @@
+{{define "main"}}
+<form id="create-conveyor-form" class="conveyor-form" action="/conveyor/new" method="post">
+  <div class="input">
+    <input type="text" name="manager-name" id="manager-name" placeholder="Manager name" title="Manager name" value="" pattern="[a-zA-Z0-9\-]{3,}" required autofocus>
+    <div class="description">Name of the queue.</div>
+  </div>
+  <div class="input">
+    <input type="text" name="conveyor-id" id="conveyor-id" placeholder="Conveyor ID" title="Conveyor ID" value="" pattern="[a-zA-Z0-9\-]{3,}" required autofocus>
+    <div class="description">Name of the queue.</div>
+  </div>
+  <div class="input">
+    <input type="text" name="workers" id="workers" placeholder="Number of workers" title="Number of workers" pattern="[0-9]{1,}" required>
+  </div>
+  <div class="input">
+    <input type="text" name="throttle" id="throttle" placeholder="Throttle" title="Number of maxium task invocations from queue per second" pattern="[0-9]{1,}" required>
+    <div class="description">Number of maxium task invocations from queue per second.</div>
+  </div>
+  <div class="input">
+    <input type="text" name="tasktlimit" id="tasktlimit" placeholder="Task time limit" title="Task time limit" pattern="[0-9]{1,}" required>
+  </div>
+  <div class="input">
+    <input type="text" name="taskmaxtries" id="taskmaxtries" placeholder="Max tries" title="Max tries" pattern="[0-9]{1,}" required>
+  </div>
+  <div class="input">
+    <input type="text" name="logsize" id="logsize" placeholder="Log size" title="Log size" pattern="[0-9]{1,}" required>
+  </div>
+  <div class="button">
+    <button type="submit" class="btn">Create</button>
+  </div>
+</form>
+{{end}}
