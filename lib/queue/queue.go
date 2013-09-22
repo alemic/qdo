@@ -25,7 +25,7 @@ const StatsTotal = "stat:total"
 const StatsTotalError = "stat:totalerror"
 const StatsTotalOK = "stat:totalok"
 const StatsTotalRescheduled = "stat:rescheduled"
-const StatsAvgTime = "stat:avgtime"
+const StatsTotalTime = "stat:totaltime"
 const StatsAvgTimeRecent = "stat:avgtimerecent"
 
 type Conveyor struct {
@@ -66,7 +66,7 @@ type Conveyor struct {
 	StatsTotalError string `json:"stats_total_error"`
 
 	// Name of statistic key: average time spent per task.
-	StatsAvgTime string `json:"stats_avg_time"`
+	StatsTotalTime string `json:"stats_total_time"`
 
 	// Name of statistic key: average time spent recently per task.
 	StatsAvgTimeRecent string `json:"stats_av_time_recent"`
@@ -121,7 +121,7 @@ func NewConveyor(prefix, id string, config *Config) *Conveyor {
 		StatsTotalOK:          prefix + ":" + id + ":" + StatsTotalOK,
 		StatsTotalRescheduled: prefix + ":" + id + ":" + StatsTotalRescheduled,
 		StatsTotalError:       prefix + ":" + id + ":" + StatsTotalError,
-		StatsAvgTime:          prefix + ":" + id + ":" + StatsAvgTime,
+		StatsTotalTime:        prefix + ":" + id + ":" + StatsTotalTime,
 		StatsAvgTimeRecent:    prefix + ":" + id + ":" + StatsAvgTimeRecent,
 		Scheduler:             NewScheduler(prefix, id),
 	}
@@ -168,6 +168,8 @@ func (conv *Conveyor) Start() error {
 func (conv *Conveyor) process(data []byte) {
 	defer func() { <-conv.NotifyReady }()
 
+	startTime := time.Now()
+
 	c := db.Pool.Get()
 	defer c.Close()
 
@@ -212,6 +214,9 @@ func (conv *Conveyor) process(data []byte) {
 	if err == nil && resp.StatusCode >= 200 && resp.StatusCode <= 299 {
 		conv.removeProcessing(&c, data, "ok")
 		log.Infof("task completed successfully: %s", resp.Status)
+
+		endTime := time.Now()
+		c.Do("INCRBY", conv.StatsTotalTime, strconv.Itoa(int(endTime.Sub(startTime))))
 		return
 	} else if err == nil && resp.StatusCode >= 400 && resp.StatusCode <= 499 {
 		conv.removeProcessing(&c, data, "error")
@@ -277,7 +282,7 @@ func (conv *Conveyor) Stats() (*Statistic, error) {
 	c.Send("GET", conv.StatsTotalOK)
 	c.Send("GET", conv.StatsTotalRescheduled)
 	c.Send("GET", conv.StatsTotalError)
-	c.Send("GET", conv.StatsAvgTime)
+	c.Send("GET", conv.StatsTotalTime)
 	c.Send("GET", conv.StatsAvgTimeRecent)
 	reply, err := redis.Values(c.Do("EXEC"))
 	if err != nil {
@@ -319,7 +324,7 @@ func (conv *Conveyor) Stats() (*Statistic, error) {
 			log.Error("", err)
 			return nil, err
 		}
-		stats.AvgTime = time.Duration(v)
+		stats.AvgTime = time.Duration(int(time.Duration(v)) / stats.TotalProcessedOK)
 	}
 	if reply[5] != nil {
 		v, err := strconv.Atoi(string(reply[5].([]byte)))
