@@ -1,9 +1,7 @@
 package main
 
 import (
-	"errors"
 	"flag"
-	"os"
 
 	"github.com/borgenk/qdo/lib/db"
 	"github.com/borgenk/qdo/lib/log"
@@ -22,21 +20,13 @@ const webDefaultPort = 8080
 const webDefaultDocumentRoo = "/var/www/"
 
 func main() {
-	name := flag.String("n", "", "Site name")
 	host := flag.String("h", dbDefaultHost, "Database host")
 	port := flag.Int("p", dbDefaultPort, "Database port")
 	pass := flag.String("P", dbDefaultPass, "Database password")
 	idx := flag.Int("i", dbDefaultIdx, "Database index")
-
 	webPort := flag.Int("w", webDefaultPort, "Web port")
 	webDocumentRoot := flag.String("D", webDefaultDocumentRoo, "Web document root")
-
 	flag.Parse()
-
-	if *name == "" {
-		log.Error("", errors.New("missing site name"))
-		os.Exit(1)
-	}
 
 	log.Infof("starting QDo %.1f", Version)
 
@@ -52,5 +42,5 @@ func main() {
 	go web.Run(*webPort, *webDocumentRoot)
 
 	// Launch queue manager.
-	queue.StartManager(*name)
+	queue.StartManager()
 }

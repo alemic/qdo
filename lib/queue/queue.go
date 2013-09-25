@@ -30,10 +30,7 @@ const StatsAvgTimeRecent = "stat:avgtimerecent"
 
 type Conveyor struct {
 	// Define resource.
-	Object string `json:"object`
-
-	// Prefix all conveyor keys. Example site name.
-	Prefix string `json:"prefix"`
+	Object string `json:"object"`
 
 	// Conveyor identification.
 	ID string `json:"id"`
@@ -109,21 +106,20 @@ type Task struct {
 	Delay   int32  `json:"delay"`
 }
 
-func NewConveyor(prefix, id string, config *Config) *Conveyor {
+func NewConveyor(conveyorID string, config *Config) *Conveyor {
 	conv := &Conveyor{
 		Object:                "Conveyor",
-		Prefix:                prefix,
-		ID:                    id,
+		ID:                    conveyorID,
 		Config:                *config,
-		WaitingList:           prefix + ":" + id + ":" + WaitingList,
-		ProcessingList:        prefix + ":" + id + ":" + ProcessingList,
-		StatsTotal:            prefix + ":" + id + ":" + StatsTotal,
-		StatsTotalOK:          prefix + ":" + id + ":" + StatsTotalOK,
-		StatsTotalRescheduled: prefix + ":" + id + ":" + StatsTotalRescheduled,
-		StatsTotalError:       prefix + ":" + id + ":" + StatsTotalError,
-		StatsTotalTime:        prefix + ":" + id + ":" + StatsTotalTime,
-		StatsAvgTimeRecent:    prefix + ":" + id + ":" + StatsAvgTimeRecent,
-		Scheduler:             NewScheduler(prefix, id),
+		WaitingList:           "qdo:" + conveyorID + ":" + WaitingList,
+		ProcessingList:        "qdo:" + conveyorID + ":" + ProcessingList,
+		StatsTotal:            "qdo:" + conveyorID + ":" + StatsTotal,
+		StatsTotalOK:          "qdo:" + conveyorID + ":" + StatsTotalOK,
+		StatsTotalRescheduled: "qdo:" + conveyorID + ":" + StatsTotalRescheduled,
+		StatsTotalError:       "qdo:" + conveyorID + ":" + StatsTotalError,
+		StatsTotalTime:        "qdo:" + conveyorID + ":" + StatsTotalTime,
+		StatsAvgTimeRecent:    "qdo:" + conveyorID + ":" + StatsAvgTimeRecent,
+		Scheduler:             NewScheduler(conveyorID),
 	}
 	return conv
 }
@@ -362,7 +358,7 @@ func GetAllTasks(conveyorID string) ([]Task, error) {
 	c := db.Pool.Get()
 	defer c.Close()
 
-	queueList := manager.Name + ":" + conveyorID + ":" + WaitingList
+	queueList := "qdo:" + conveyorID + ":" + WaitingList
 	reply, err := redis.Values(c.Do("LRANGE", queueList, "0", "-1"))
 	if err != nil {
 		log.Error("", err)

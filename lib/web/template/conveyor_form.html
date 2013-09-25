@@ -1,11 +1,7 @@
 {{define "main"}}
 <form id="create-conveyor-form" class="conveyor-form" action="/conveyor/new" method="post">
   <div class="input">
-    <input type="text" name="manager-name" id="manager-name" placeholder="Manager name" title="Manager name" value="" pattern="[a-zA-Z0-9\-]{3,}" required autofocus>
-    <div class="description">Name of the queue.</div>
-  </div>
-  <div class="input">
-    <input type="text" name="conveyor-id" id="conveyor-id" placeholder="Conveyor ID" title="Conveyor ID" value="" pattern="[a-zA-Z0-9\-]{3,}" required autofocus>
+    <input type="text" name="conveyor_id" id="conveyor-id" placeholder="Conveyor ID" title="Conveyor ID" value="" pattern="[a-zA-Z0-9\-]{3,}" required autofocus>
     <div class="description">Name of the queue.</div>
   </div>
   <div class="input">
@@ -16,13 +12,13 @@
     <div class="description">Number of maxium task invocations from queue per second.</div>
   </div>
   <div class="input">
-    <input type="text" name="tasktlimit" id="tasktlimit" placeholder="Task time limit" title="Task time limit" pattern="[0-9]{1,}" required>
+    <input type="text" name="task_t_limit" id="task-t-limit" placeholder="Task time limit" title="Task time limit" pattern="[0-9]{1,}" required>
   </div>
   <div class="input">
-    <input type="text" name="taskmaxtries" id="taskmaxtries" placeholder="Max tries" title="Max tries" pattern="[0-9]{1,}" required>
+    <input type="text" name="task_max_tries" id="task-max-tries" placeholder="Max tries" title="Max tries" pattern="[0-9]{1,}" required>
   </div>
   <div class="input">
-    <input type="text" name="logsize" id="logsize" placeholder="Log size" title="Log size" pattern="[0-9]{1,}" required>
+    <input type="text" name="log_size" id="log-size" placeholder="Log size" title="Log size" pattern="[0-9]{1,}" required>
   </div>
   <div class="button">
     <button type="submit" class="btn">Create</button>

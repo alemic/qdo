@@ -11,11 +11,10 @@ import (
 	"github.com/borgenk/qdo/lib/log"
 )
 
-const PendingQueueList = "manager:pendingqueuelist"
-const ActiveQueueList = "manager:activequeuelist"
+const PendingQueueList = "qdo:manager:pendingqueuelist"
+const ActiveQueueList = "qdo:manager:activequeuelist"
 
 type Manager struct {
-	Name        string
 	PendingList string
 	ActiveList  string
 	Conveyors   []*Conveyor
@@ -23,11 +22,10 @@ type Manager struct {
 
 var manager *Manager
 
-func StartManager(name string) error {
+func StartManager() error {
 	manager = &Manager{
-		Name:        name,
-		PendingList: name + ":" + PendingQueueList,
-		ActiveList:  name + ":" + ActiveQueueList,
+		PendingList: PendingQueueList,
+		ActiveList:  ActiveQueueList,
 	}
 	return manager.Start()
 }
@@ -99,8 +97,8 @@ func (man *Manager) Remove(data []byte) error {
 	return nil
 }
 
-func AddConveyor(managerName, conveyorID string, config *Config) error {
-	conveyor := NewConveyor(managerName, conveyorID, config)
+func AddConveyor(conveyorID string, config *Config) error {
+	conveyor := NewConveyor(conveyorID, config)
 	conv, err := json.Marshal(conveyor)
 	if err != nil {
 		log.Error("", err)

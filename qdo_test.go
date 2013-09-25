@@ -65,14 +65,14 @@ func TestInsertJobs(t *testing.T) {
 	defer c.Close()
 
 	j, _ := json.Marshal(j1)
-	_, err = c.Do("LPUSH", "dev:test:"+queue.WaitingList, j)
+	_, err = c.Do("LPUSH", "qdo:test:"+queue.WaitingList, j)
 	if err != nil {
 		t.Fatalf("Command failed: %s", err.Error())
 		return
 	}
 
 	j, _ = json.Marshal(j2)
-	_, err = c.Do("LPUSH", "dev:test:"+queue.WaitingList, j)
+	_, err = c.Do("LPUSH", "qdo:test:"+queue.WaitingList, j)
 	if err != nil {
 		t.Fatalf("Command failed: %s", err.Error())
 		return
@@ -80,7 +80,7 @@ func TestInsertJobs(t *testing.T) {
 
 	j, _ = json.Marshal(j3)
 	for i := 0; i < 10; i++ {
-		_, err = c.Do("LPUSH", "dev:test:"+queue.WaitingList, j)
+		_, err = c.Do("LPUSH", "qdo:test:"+queue.WaitingList, j)
 		if err != nil {
 			t.Fatalf("Command failed: %s", err.Error())
 			return

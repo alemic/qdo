@@ -97,8 +97,7 @@ func getAllConveyor(w http.ResponseWriter, r *http.Request) {
 // Creates a new conveyor.
 // API handler for POST /api/conveyor.
 func createConveyor(w http.ResponseWriter, r *http.Request) {
-	managerName := r.FormValue("manager-name")
-	conveyorID := r.FormValue("conveyor-id")
+	conveyorID := r.FormValue("conveyor_id")
 
 	config := &queue.Config{}
 	var (
@@ -121,7 +120,7 @@ func createConveyor(w http.ResponseWriter, r *http.Request) {
 	}
 	config.Throttle = int32(v)
 
-	v, err = strconv.Atoi(r.FormValue("tasktlimit"))
+	v, err = strconv.Atoi(r.FormValue("task_t_limit"))
 	if err != nil {
 		log.Error("", err)
 		http.Error(w, "", http.StatusBadRequest)
@@ -129,7 +128,7 @@ func createConveyor(w http.ResponseWriter, r *http.Request) {
 	}
 	config.TaskTLimit = int32(v)
 
-	v, err = strconv.Atoi(r.FormValue("taskmaxtries"))
+	v, err = strconv.Atoi(r.FormValue("task_max_tries"))
 	if err != nil {
 		log.Error("", err)
 		http.Error(w, "", http.StatusBadRequest)
@@ -137,7 +136,7 @@ func createConveyor(w http.ResponseWriter, r *http.Request) {
 	}
 	config.TaskMaxTries = int32(v)
 
-	v, err = strconv.Atoi(r.FormValue("logsize"))
+	v, err = strconv.Atoi(r.FormValue("log_size"))
 	if err != nil {
 		log.Error("", err)
 		http.Error(w, "", http.StatusBadRequest)
@@ -145,7 +144,7 @@ func createConveyor(w http.ResponseWriter, r *http.Request) {
 	}
 	config.LogSize = int32(v)
 
-	err = queue.AddConveyor(managerName, conveyorID, config)
+	err = queue.AddConveyor(conveyorID, config)
 	if err != nil {
 		log.Error("", err)
 		http.Error(w, "", http.StatusBadRequest)

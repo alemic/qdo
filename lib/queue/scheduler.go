@@ -24,10 +24,10 @@ type Scheduler struct {
 	Rate time.Duration `json:"rate"`
 }
 
-func NewScheduler(prefix string, conveyor string) *Scheduler {
+func NewScheduler(conveyorID string) *Scheduler {
 	scheduler := &Scheduler{
-		ScheduleId:   prefix + ":" + conveyor + ":" + ScheduleId,
-		ScheduleList: prefix + ":" + conveyor + ":" + ScheduleList,
+		ScheduleId:   "qdo:" + conveyorID + ":" + ScheduleId,
+		ScheduleList: "qdo:" + conveyorID + ":" + ScheduleList,
 		Rate:         5 * time.Second,
 	}
 	return scheduler
