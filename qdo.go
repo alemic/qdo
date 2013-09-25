@@ -22,10 +22,10 @@ const webDefaultDocumentRoo = "/var/www/"
 func main() {
 	host := flag.String("h", dbDefaultHost, "Database host")
 	port := flag.Int("p", dbDefaultPort, "Database port")
-	pass := flag.String("P", dbDefaultPass, "Database password")
+	pass := flag.String("s", dbDefaultPass, "Database password")
 	idx := flag.Int("i", dbDefaultIdx, "Database index")
 	webPort := flag.Int("w", webDefaultPort, "Web port")
-	webDocumentRoot := flag.String("D", webDefaultDocumentRoo, "Web document root")
+	webDocumentRoot := flag.String("d", webDefaultDocumentRoo, "Web document root")
 	flag.Parse()
 
 	log.Infof("starting QDo %.1f", Version)
