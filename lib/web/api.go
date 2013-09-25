@@ -80,7 +80,23 @@ func getAllTasks(w http.ResponseWriter, r *http.Request) {
 
 func createTask(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
-	_ = vars["conveyor_id"]
+	conveyorID := vars["conveyor_id"]
+
+	conveyor, err := queue.GetConveyor(conveyorID)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	if conveyor == nil {
+		http.Error(w, "conveyor id does not exsist", http.StatusBadRequest)
+		return
+	}
+	res, err := conveyor.AddTask(r.FormValue("target"), r.FormValue("payload"))
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	ReturnJSON(w, r, res)
 }
 
 // List all active conveyors.

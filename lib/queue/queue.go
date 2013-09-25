@@ -110,6 +110,7 @@ type Statistic struct {
 }
 
 type Task struct {
+	Object  string `json:"object"`
 	Target  string `json:"target"`
 	Payload string `json:"payload"`
 	Tries   int32  `json:"tries"`
@@ -271,6 +272,35 @@ func (conv *Conveyor) reset() error {
 		}
 		c.Close()
 	}
+}
+
+func (conv *Conveyor) AddTask(target, payload string) (*Task, error) {
+	if db.Pool == nil {
+		err := errors.New("Database not initialized")
+		log.Error("", err)
+		return nil, err
+	}
+	c := db.Pool.Get()
+	defer c.Close()
+
+	task := &Task{
+		Object:  "task",
+		Target:  target,
+		Payload: payload,
+		Tries:   0,
+		Delay:   0,
+	}
+	t, err := json.Marshal(task)
+	if err != nil {
+		log.Error("", err)
+		return nil, err
+	}
+	_, err = c.Do("LPUSH", conv.WaitingList, t)
+	if err != nil {
+		log.Error("", err)
+		return nil, err
+	}
+	return task, nil
 }
 
 func (conv *Conveyor) Stats() (*Statistic, error) {
