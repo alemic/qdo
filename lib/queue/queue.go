@@ -21,6 +21,8 @@ const ProcessingList = "queue:processinglist"
 
 const LogMessageList = "log"
 
+const StatsInQueue = "stat:inqueue"
+const StatsInProcessing = "stat:inprocessing"
 const StatsTotal = "stat:total"
 const StatsTotalError = "stat:totalerror"
 const StatsTotalOK = "stat:totalok"
@@ -49,6 +51,12 @@ type Conveyor struct {
 
 	// Name of log message list.
 	LogMessageList string `json:"log_message_list"`
+
+	// Name of statistic key: total tasks in queue.
+	StatsInQueue string `json:"stats_in_queue"`
+
+	// Name of statistic key: total tasks in processing.
+	StatsInProcessing string `json:"stats_in_processing"`
 
 	// Name of statistic key: total tasks processed.
 	StatsTotal string `json:"stats_total"`
@@ -91,6 +99,8 @@ type Config struct {
 
 type Statistic struct {
 	Object                    string        `json:"object"`
+	InQueue                   int           `json:"in_queue"`
+	InProcessing              int           `json:"in_processing"`
 	TotalProcessed            int           `json:"total_processed"`
 	TotalProcessedOK          int           `json:"total_processed_ok"`
 	TotalProcessedError       int           `json:"total_processed_error"`
@@ -108,11 +118,13 @@ type Task struct {
 
 func NewConveyor(conveyorID string, config *Config) *Conveyor {
 	conv := &Conveyor{
-		Object:                "Conveyor",
+		Object:                "conveyor",
 		ID:                    conveyorID,
 		Config:                *config,
 		WaitingList:           "qdo:" + conveyorID + ":" + WaitingList,
 		ProcessingList:        "qdo:" + conveyorID + ":" + ProcessingList,
+		StatsInQueue:          "qdo:" + conveyorID + ":" + StatsInQueue,
+		StatsInProcessing:     "qdo:" + conveyorID + ":" + StatsInProcessing,
 		StatsTotal:            "qdo:" + conveyorID + ":" + StatsTotal,
 		StatsTotalOK:          "qdo:" + conveyorID + ":" + StatsTotalOK,
 		StatsTotalRescheduled: "qdo:" + conveyorID + ":" + StatsTotalRescheduled,
@@ -145,8 +157,8 @@ func (conv *Conveyor) Start() error {
 		conv.NotifyReady <- 1
 		c := db.Pool.Get()
 		b, err := redis.Bytes(c.Do("BRPOPLPUSH", conv.WaitingList, conv.ProcessingList, "0"))
+		c.Close()
 		if err != nil {
-			c.Close()
 			log.Error("error while fetching new task", err)
 			time.Sleep(50 * time.Millisecond)
 			continue
@@ -169,7 +181,6 @@ func (conv *Conveyor) process(data []byte) {
 	c := db.Pool.Get()
 	defer c.Close()
 
-	log.Infof("%s", conv.StatsTotal)
 	c.Do("INCR", conv.StatsTotal)
 
 	task := &Task{}
@@ -249,9 +260,11 @@ func (conv *Conveyor) reset() error {
 		} else {
 			s, err := c.Do("RPOPLPUSH", conv.ProcessingList, conv.WaitingList)
 			if err != nil {
+				c.Close()
 				log.Error("", err)
 				return err
 			} else if s == nil {
+				c.Close()
 				// All done, processing is empty.
 				return nil
 			}
@@ -274,6 +287,8 @@ func (conv *Conveyor) Stats() (*Statistic, error) {
 	}
 
 	c.Send("MULTI")
+	c.Send("LLEN", conv.StatsInQueue)
+	c.Send("LLEN", conv.StatsInProcessing)
 	c.Send("GET", conv.StatsTotal)
 	c.Send("GET", conv.StatsTotalOK)
 	c.Send("GET", conv.StatsTotalRescheduled)
@@ -287,43 +302,57 @@ func (conv *Conveyor) Stats() (*Statistic, error) {
 	}
 
 	if reply[0] != nil {
-		stats.TotalProcessed, err = strconv.Atoi(string(reply[0].([]byte)))
+		stats.InQueue, _ = reply[0].(int)
 		if err != nil {
 			log.Error("", err)
 			return nil, err
 		}
 	}
 	if reply[1] != nil {
-		stats.TotalProcessedOK, err = strconv.Atoi(string(reply[1].([]byte)))
+		stats.InProcessing, _ = reply[1].(int)
 		if err != nil {
 			log.Error("", err)
 			return nil, err
 		}
 	}
 	if reply[2] != nil {
-		stats.TotalProcessedRescheduled, err = strconv.Atoi(string(reply[2].([]byte)))
+		stats.TotalProcessed, err = strconv.Atoi(string(reply[2].([]byte)))
 		if err != nil {
 			log.Error("", err)
 			return nil, err
 		}
 	}
 	if reply[3] != nil {
-		stats.TotalProcessedError, err = strconv.Atoi(string(reply[3].([]byte)))
+		stats.TotalProcessedOK, err = strconv.Atoi(string(reply[3].([]byte)))
 		if err != nil {
 			log.Error("", err)
 			return nil, err
 		}
 	}
 	if reply[4] != nil {
-		v, err := strconv.Atoi(string(reply[4].([]byte)))
+		stats.TotalProcessedRescheduled, err = strconv.Atoi(string(reply[4].([]byte)))
+		if err != nil {
+			log.Error("", err)
+			return nil, err
+		}
+	}
+	if reply[5] != nil {
+		stats.TotalProcessedError, err = strconv.Atoi(string(reply[5].([]byte)))
+		if err != nil {
+			log.Error("", err)
+			return nil, err
+		}
+	}
+	if reply[6] != nil {
+		v, err := strconv.Atoi(string(reply[6].([]byte)))
 		if err != nil {
 			log.Error("", err)
 			return nil, err
 		}
 		stats.AvgTime = time.Duration(int(time.Duration(v)) / stats.TotalProcessedOK)
 	}
-	if reply[5] != nil {
-		v, err := strconv.Atoi(string(reply[5].([]byte)))
+	if reply[7] != nil {
+		v, err := strconv.Atoi(string(reply[7].([]byte)))
 		if err != nil {
 			log.Error("", err)
 			return nil, err
