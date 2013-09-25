@@ -21,6 +21,10 @@ if [ ! -e "/opt/docker" ]; then
     sh -c "echo deb https://get.docker.io/ubuntu docker main > /etc/apt/sources.list.d/docker.list"
     apt-get update -q
     apt-get install -q -y linux-image-extra-`uname -r` lxc-docker
+
+    echo "limit nofile 262144 262144" >> /etc/init/docker.conf
+    service docker restart
+    sleep 2
 fi
 
 # Go development environment
