@@ -16,6 +16,8 @@ import (
 	"github.com/borgenk/qdo/lib/log"
 )
 
+const TaskIdKey = "queue:task:next_id"
+
 const WaitingList = "queue:waitinglist"
 const ProcessingList = "queue:processinglist"
 
@@ -42,6 +44,12 @@ type Conveyor struct {
 
 	// Limit number of simultaneous workers processing tasks.
 	NotifyReady chan int `json:"-"`
+
+	// Conveyor state.
+	Paused bool `json:"paused"`
+
+	// Task ID key.
+	TaskIdKey string `json:"task_id_key"`
 
 	// Conveyor waiting list name.
 	WaitingList string `json:"waiting_list"`
@@ -111,6 +119,7 @@ type Statistic struct {
 
 type Task struct {
 	Object  string `json:"object"`
+	ID      int    `json:"id"`
 	Target  string `json:"target"`
 	Payload string `json:"payload"`
 	Tries   int32  `json:"tries"`
@@ -122,6 +131,8 @@ func NewConveyor(conveyorID string, config *Config) *Conveyor {
 		Object:                "conveyor",
 		ID:                    conveyorID,
 		Config:                *config,
+		Paused:                false,
+		TaskIdKey:             "qdo:" + conveyorID + ":" + TaskIdKey,
 		WaitingList:           "qdo:" + conveyorID + ":" + WaitingList,
 		ProcessingList:        "qdo:" + conveyorID + ":" + ProcessingList,
 		StatsInQueue:          "qdo:" + conveyorID + ":" + StatsInQueue,
@@ -155,7 +166,14 @@ func (conv *Conveyor) Start() error {
 	go conv.Scheduler.Start(conv.WaitingList)
 
 	for {
+		if conv.Paused {
+			time.Sleep(1 * time.Second)
+			continue
+		}
+
+		// Block until conveyor is ready to process next task.
 		conv.NotifyReady <- 1
+
 		c := db.Pool.Get()
 		b, err := redis.Bytes(c.Do("BRPOPLPUSH", conv.WaitingList, conv.ProcessingList, "0"))
 		c.Close()
@@ -283,8 +301,15 @@ func (conv *Conveyor) AddTask(target, payload string) (*Task, error) {
 	c := db.Pool.Get()
 	defer c.Close()
 
+	ID, err := redis.Int(c.Do("INCR", conv.TaskIdKey))
+	if err != nil {
+		log.Error("", err)
+		return nil, err
+	}
+
 	task := &Task{
 		Object:  "task",
+		ID:      ID,
 		Target:  target,
 		Payload: payload,
 		Tries:   0,

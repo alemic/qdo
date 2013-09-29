@@ -168,6 +168,26 @@ func createConveyor(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+func updateConveyor(w http.ResponseWriter, r *http.Request) {
+	id := r.FormValue("conveyor_id")
+	conv, err := queue.GetConveyor(id)
+	if err != nil {
+		http.Error(w, "", http.StatusInternalServerError)
+		return
+	}
+	if conv == nil {
+		http.Error(w, "", http.StatusNotFound)
+		return
+	}
+
+	paused := r.FormValue("paused")
+	if paused == "true" {
+		conv.Paused = true
+	} else if paused == "false" {
+		conv.Paused = false
+	}
+}
+
 // List all active conveyors.
 // API handler for GET /api/conveyor/{conveyor_id}.
 func getConveyor(w http.ResponseWriter, r *http.Request) {

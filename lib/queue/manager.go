@@ -17,7 +17,7 @@ const ActiveQueueList = "qdo:manager:activequeuelist"
 type Manager struct {
 	PendingList string
 	ActiveList  string
-	Conveyors   []*Conveyor
+	Conveyors   map[string]*Conveyor
 }
 
 var manager *Manager
@@ -26,6 +26,7 @@ func StartManager() error {
 	manager = &Manager{
 		PendingList: PendingQueueList,
 		ActiveList:  ActiveQueueList,
+		Conveyors:   make(map[string]*Conveyor),
 	}
 	return manager.Start()
 }
@@ -64,26 +65,29 @@ func (man *Manager) Discover() {
 	for {
 		c := db.Pool.Get()
 		b, err := redis.Bytes(c.Do("BRPOPLPUSH", man.PendingList, man.ActiveList, "0"))
+
 		c.Close()
 		if err != nil {
 			log.Error("error while fetching new queue", err)
 			time.Sleep(50 * time.Millisecond)
 			continue
 		}
-		man.ActivateConveyor(b)
-	}
-}
 
-func (man *Manager) ActivateConveyor(data []byte) {
-	conv := &Conveyor{}
-	err := json.Unmarshal(data, conv)
-	if err != nil {
-		log.Error("invalid config format", err)
-		man.Remove(data)
-		return
+		conv := &Conveyor{}
+		err = json.Unmarshal(b, conv)
+		if err != nil {
+			log.Error("invalid config format", err)
+			continue
+		}
+
+		_, isNew := man.Conveyors[conv.ID]
+		if isNew {
+			// Do reload stuff..
+		}
+
+		man.Conveyors[conv.ID] = conv
+		go conv.Start()
 	}
-	man.Conveyors = append(man.Conveyors, conv)
-	go conv.Start()
 }
 
 func (man *Manager) Remove(data []byte) error {
@@ -147,21 +151,14 @@ func GetAllConveyor() ([]Conveyor, error) {
 }
 
 func GetConveyor(id string) (*Conveyor, error) {
-	if db.Pool == nil {
-		return nil, errors.New("Database not initialized")
-	}
-	c := db.Pool.Get()
-	defer c.Close()
-
-	conveyors, err := GetAllConveyor()
-	if err != nil {
-		return nil, err
+	if manager == nil {
+		return nil, nil
 	}
 
-	for _, val := range conveyors {
-		if val.ID == id {
-			return &val, nil
-		}
+	conv, ok := manager.Conveyors[id]
+	if !ok {
+		return nil, nil
 	}
-	return nil, nil
+
+	return conv, nil
 }
