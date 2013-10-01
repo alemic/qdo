@@ -124,30 +124,12 @@ func AddConveyor(conveyorID string, config *Config) error {
 	return nil
 }
 
-func GetAllConveyor() ([]Conveyor, error) {
-	if db.Pool == nil {
-		return nil, errors.New("Database not initialized")
+func GetAllConveyor() []*Conveyor {
+	resp := make([]*Conveyor, 0, len(manager.Conveyors))
+	for _, v := range manager.Conveyors {
+		resp = append(resp, v)
 	}
-	c := db.Pool.Get()
-	defer c.Close()
-
-	reply, err := redis.Values(c.Do("LRANGE", manager.ActiveList, "0", "-1"))
-	if err != nil {
-		log.Error("", err)
-		return nil, err
-	}
-
-	// Make a new slice of equal length as result. Type assert to []byte and
-	// JSON decode into slice element.
-	resp := make([]Conveyor, len(reply))
-	for i, v := range reply {
-		err = json.Unmarshal(v.([]byte), &resp[i])
-		if err != nil {
-			log.Error("", err)
-			return nil, err
-		}
-	}
-	return resp, nil
+	return resp
 }
 
 func GetConveyor(id string) (*Conveyor, error) {

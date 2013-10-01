@@ -102,11 +102,7 @@ func createTask(w http.ResponseWriter, r *http.Request) {
 // List all active conveyors.
 // API handler for GET /api/conveyor.
 func getAllConveyor(w http.ResponseWriter, r *http.Request) {
-	res, err := queue.GetAllConveyor()
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return
-	}
+	res := queue.GetAllConveyor()
 	ReturnJSON(w, r, JSONListResult("/api/conveyor", len(res), res))
 }
 
@@ -169,7 +165,8 @@ func createConveyor(w http.ResponseWriter, r *http.Request) {
 }
 
 func updateConveyor(w http.ResponseWriter, r *http.Request) {
-	id := r.FormValue("conveyor_id")
+	vars := mux.Vars(r)
+	id := vars["conveyor_id"]
 	conv, err := queue.GetConveyor(id)
 	if err != nil {
 		http.Error(w, "", http.StatusInternalServerError)
@@ -182,10 +179,11 @@ func updateConveyor(w http.ResponseWriter, r *http.Request) {
 
 	paused := r.FormValue("paused")
 	if paused == "true" {
-		conv.Paused = true
+		conv.Pause()
 	} else if paused == "false" {
-		conv.Paused = false
+		conv.Resume()
 	}
+	ReturnJSON(w, r, conv)
 }
 
 // List all active conveyors.
