@@ -24,10 +24,9 @@ curl http://127.0.0.1:8080/api/conveyor/foo/task \
    -d target=http://127.0.0.1/mytask \
    -d "payload={'foo': 'bar'}"
 
-
-
-
-
+Delete all tasks
+----------------------
+curl -X DELETE http://127.0.0.1:8080/api/conveyor/foo/task
 
 
 

@@ -1,0 +1,7 @@
+{{define "main"}}
+    {{range .Result}}
+    <li>
+        <a href="/admin/conveyors/{{.ID}}">{{.ID}}</a>
+    </li>
+    {{end}}
+{{end}}

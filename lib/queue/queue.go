@@ -297,6 +297,23 @@ func (conv *Conveyor) reset() error {
 	}
 }
 
+func (conv *Conveyor) Flush() error {
+	if db.Pool == nil {
+		err := errors.New("Database not initialized")
+		log.Error("", err)
+		return err
+	}
+	c := db.Pool.Get()
+	defer c.Close()
+
+	c.Send("MULTI")
+	c.Send("DEL", conv.WaitingList)
+	c.Send("DEL", conv.ProcessingList)
+	c.Send("DEL", conv.Scheduler.ScheduleList)
+	_, err := redis.Values(c.Do("EXEC"))
+	return err
+}
+
 func (conv *Conveyor) AddTask(target, payload string) (*Task, error) {
 	if db.Pool == nil {
 		err := errors.New("Database not initialized")

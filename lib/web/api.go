@@ -29,6 +29,11 @@ func JSONListResult(url string, count int, data interface{}) *jsonListResult {
 }
 
 func ReturnJSON(w http.ResponseWriter, r *http.Request, resp interface{}) {
+	if resp == nil {
+		w.WriteHeader(http.StatusOK)
+		return
+	}
+
 	pretty := r.FormValue("pretty")
 	if pretty != "" {
 		b, err := json.MarshalIndent(resp, "", "  ")
@@ -44,69 +49,12 @@ func ReturnJSON(w http.ResponseWriter, r *http.Request, resp interface{}) {
 	}
 }
 
-func getStats(w http.ResponseWriter, r *http.Request) {
-	vars := mux.Vars(r)
-	conveyorID := vars["conveyor_id"]
-
-	conveyor, err := queue.GetConveyor(conveyorID)
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return
-	}
-	if conveyor == nil {
-		http.Error(w, err.Error(), http.StatusNotFound)
-		return
-	}
-
-	res, err := conveyor.Stats()
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return
-	}
-	ReturnJSON(w, r, res)
-}
-
-func getAllTasks(w http.ResponseWriter, r *http.Request) {
-	vars := mux.Vars(r)
-	conveyorID := vars["conveyor_id"]
-
-	res, err := queue.GetAllTasks(conveyorID)
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return
-	}
-	ReturnJSON(w, r, JSONListResult("/api/conveyor/"+conveyorID+"/task", len(res), res))
-}
-
-func createTask(w http.ResponseWriter, r *http.Request) {
-	vars := mux.Vars(r)
-	conveyorID := vars["conveyor_id"]
-
-	conveyor, err := queue.GetConveyor(conveyorID)
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return
-	}
-	if conveyor == nil {
-		http.Error(w, "conveyor id does not exsist", http.StatusBadRequest)
-		return
-	}
-	res, err := conveyor.AddTask(r.FormValue("target"), r.FormValue("payload"))
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return
-	}
-	ReturnJSON(w, r, res)
-}
-
-// List all active conveyors.
 // API handler for GET /api/conveyor.
 func getAllConveyor(w http.ResponseWriter, r *http.Request) {
 	res := queue.GetAllConveyor()
 	ReturnJSON(w, r, JSONListResult("/api/conveyor", len(res), res))
 }
 
-// Creates a new conveyor.
 // API handler for POST /api/conveyor.
 func createConveyor(w http.ResponseWriter, r *http.Request) {
 	conveyorID := r.FormValue("conveyor_id")
@@ -164,6 +112,23 @@ func createConveyor(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+// API handler for GET /api/conveyor/{conveyor_id}.
+func getConveyor(w http.ResponseWriter, r *http.Request) {
+	vars := mux.Vars(r)
+	id := vars["conveyor_id"]
+	res, err := queue.GetConveyor(id)
+	if err != nil {
+		http.Error(w, "", http.StatusInternalServerError)
+		return
+	}
+	if res == nil {
+		http.Error(w, "", http.StatusNotFound)
+		return
+	}
+	ReturnJSON(w, r, res)
+}
+
+// API handler for POST /api/conveyor/{conveyor_id}.
 func updateConveyor(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
 	id := vars["conveyor_id"]
@@ -186,18 +151,81 @@ func updateConveyor(w http.ResponseWriter, r *http.Request) {
 	ReturnJSON(w, r, conv)
 }
 
-// List all active conveyors.
-// API handler for GET /api/conveyor/{conveyor_id}.
-func getConveyor(w http.ResponseWriter, r *http.Request) {
+// API handler for GET /api/conveyor/{conveyor_id}/task
+func getAllTasks(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
-	id := vars["conveyor_id"]
-	res, err := queue.GetConveyor(id)
+	conveyorID := vars["conveyor_id"]
+
+	res, err := queue.GetAllTasks(conveyorID)
 	if err != nil {
-		http.Error(w, "", http.StatusInternalServerError)
+		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
-	if res == nil {
-		http.Error(w, "", http.StatusNotFound)
+	ReturnJSON(w, r, JSONListResult("/api/conveyor/"+conveyorID+"/task", len(res), res))
+}
+
+// API handler for POST /api/conveyor/{conveyor_id}/task.
+func createTask(w http.ResponseWriter, r *http.Request) {
+	vars := mux.Vars(r)
+	conveyorID := vars["conveyor_id"]
+
+	conveyor, err := queue.GetConveyor(conveyorID)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	if conveyor == nil {
+		http.Error(w, "conveyor id does not exsist", http.StatusBadRequest)
+		return
+	}
+	res, err := conveyor.AddTask(r.FormValue("target"), r.FormValue("payload"))
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	ReturnJSON(w, r, res)
+}
+
+// API handler for DELETE /api/conveyor/{conveyor_id}/task.
+func deleteAllTasks(w http.ResponseWriter, r *http.Request) {
+	vars := mux.Vars(r)
+	conveyorID := vars["conveyor_id"]
+
+	conveyor, err := queue.GetConveyor(conveyorID)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	if conveyor == nil {
+		http.Error(w, "conveyor id does not exsist", http.StatusBadRequest)
+		return
+	}
+	err = conveyor.Flush()
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	ReturnJSON(w, r, nil)
+}
+
+// API handler for GET /api/conveyor/{conveyor_id}/stats
+func getStats(w http.ResponseWriter, r *http.Request) {
+	vars := mux.Vars(r)
+	conveyorID := vars["conveyor_id"]
+
+	conveyor, err := queue.GetConveyor(conveyorID)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	if conveyor == nil {
+		http.Error(w, err.Error(), http.StatusNotFound)
+		return
+	}
+
+	res, err := conveyor.Stats()
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
 	ReturnJSON(w, r, res)
