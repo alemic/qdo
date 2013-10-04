@@ -23,14 +23,20 @@ type Conveyor struct {
 	// Conveyor identification.
 	ID string `json:"id"`
 
-	// Conveyor configurations.
-	Config Config `json:"config"`
+	// Conveyor created timestamp.
+	Created time.Time `json:"created"`
+
+	// Conveyor changed timestamp.
+	Changed time.Time `json:"changed"`
+
+	// Conveyor state.
+	Paused bool `json:"paused"`
 
 	// Limit number of simultaneous workers processing tasks.
 	NotifyReady chan int `json:"-"`
 
-	// Conveyor state.
-	Paused bool `json:"paused"`
+	// Conveyor configurations.
+	Config Config `json:"config"`
 
 	// Redis keys.
 	Redis *RedisKeys `json:"-"`
@@ -111,9 +117,12 @@ type Task struct {
 }
 
 func NewConveyor(conveyorID string, config *Config) *Conveyor {
+	now := time.Now()
 	conv := &Conveyor{
 		Object:    "conveyor",
 		ID:        conveyorID,
+		Created:   now,
+		Changed:   now,
 		Config:    *config,
 		Paused:    false,
 		Scheduler: NewScheduler(conveyorID),
