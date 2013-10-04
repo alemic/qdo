@@ -16,22 +16,6 @@ import (
 	"github.com/borgenk/qdo/lib/log"
 )
 
-const TaskIdKey = "queue:task:next_id"
-
-const WaitingList = "queue:waitinglist"
-const ProcessingList = "queue:processinglist"
-
-const LogMessageList = "log"
-
-const StatsInQueue = "stat:inqueue"
-const StatsInProcessing = "stat:inprocessing"
-const StatsTotal = "stat:total"
-const StatsTotalError = "stat:totalerror"
-const StatsTotalOK = "stat:totalok"
-const StatsTotalRescheduled = "stat:rescheduled"
-const StatsTotalTime = "stat:totaltime"
-const StatsAvgTimeRecent = "stat:avgtimerecent"
-
 type Conveyor struct {
 	// Define resource.
 	Object string `json:"object"`
@@ -48,6 +32,14 @@ type Conveyor struct {
 	// Conveyor state.
 	Paused bool `json:"paused"`
 
+	// Redis keys.
+	Redis *RedisKeys `json:"-"`
+
+	// Scheduler.
+	Scheduler *Scheduler `json:"scheduler"`
+}
+
+type RedisKeys struct {
 	// Task ID key.
 	TaskIdKey string `json:"task_id_key"`
 
@@ -77,9 +69,6 @@ type Conveyor struct {
 
 	// Name of statistic key: average time spent recently per task.
 	StatsAvgTimeRecent string `json:"stats_av_time_recent"`
-
-	// Scheduler.
-	Scheduler *Scheduler `json:"scheduler"`
 }
 
 type Config struct {
@@ -123,22 +112,29 @@ type Task struct {
 
 func NewConveyor(conveyorID string, config *Config) *Conveyor {
 	conv := &Conveyor{
-		Object:                "conveyor",
-		ID:                    conveyorID,
-		Config:                *config,
-		Paused:                false,
-		TaskIdKey:             "qdo:" + conveyorID + ":" + TaskIdKey,
-		WaitingList:           "qdo:" + conveyorID + ":" + WaitingList,
-		ProcessingList:        "qdo:" + conveyorID + ":" + ProcessingList,
-		StatsTotal:            "qdo:" + conveyorID + ":" + StatsTotal,
-		StatsTotalOK:          "qdo:" + conveyorID + ":" + StatsTotalOK,
-		StatsTotalRescheduled: "qdo:" + conveyorID + ":" + StatsTotalRescheduled,
-		StatsTotalError:       "qdo:" + conveyorID + ":" + StatsTotalError,
-		StatsTotalTime:        "qdo:" + conveyorID + ":" + StatsTotalTime,
-		StatsAvgTimeRecent:    "qdo:" + conveyorID + ":" + StatsAvgTimeRecent,
-		Scheduler:             NewScheduler(conveyorID),
+		Object:    "conveyor",
+		ID:        conveyorID,
+		Config:    *config,
+		Paused:    false,
+		Scheduler: NewScheduler(conveyorID),
+		Redis:     NewRedisKeys(conveyorID),
 	}
 	return conv
+}
+
+func NewRedisKeys(conveyorID string) *RedisKeys {
+	key := &RedisKeys{
+		TaskIdKey:             "qdo:" + conveyorID + ":queue:task:next_id",
+		WaitingList:           "qdo:" + conveyorID + ":queue:waitinglist",
+		ProcessingList:        "qdo:" + conveyorID + ":queue:processinglist",
+		StatsTotal:            "qdo:" + conveyorID + ":stat:total",
+		StatsTotalOK:          "qdo:" + conveyorID + ":stat:totalok",
+		StatsTotalRescheduled: "qdo:" + conveyorID + ":stat:rescheduled",
+		StatsTotalError:       "qdo:" + conveyorID + ":stat:totalerror",
+		StatsTotalTime:        "qdo:" + conveyorID + ":stat:totaltime",
+		StatsAvgTimeRecent:    "qdo:" + conveyorID + ":stat:avgtimerecent",
+	}
+	return key
 }
 
 func (conv *Conveyor) Start() error {
@@ -146,6 +142,10 @@ func (conv *Conveyor) Start() error {
 		conv.Config.NWorker)
 
 	conv.NotifyReady = make(chan int, conv.Config.NWorker)
+
+	if conv.Redis == nil {
+		conv.Redis = NewRedisKeys(conv.ID)
+	}
 
 	// Treat existing tasks in processing list as failed. Reschedule to waiting
 	// queue. Also makes sure we have database connection before we go any
@@ -156,7 +156,7 @@ func (conv *Conveyor) Start() error {
 	}
 
 	// Start scheduler for delayed or rescheduled tasks.
-	go conv.Scheduler.Start(conv.WaitingList)
+	go conv.Scheduler.Start(conv.Redis.WaitingList)
 
 	for {
 		// Block until conveyor is ready to process next task.
@@ -169,7 +169,7 @@ func (conv *Conveyor) Start() error {
 		}
 
 		c := db.Pool.Get()
-		b, err := redis.Bytes(c.Do("BRPOPLPUSH", conv.WaitingList, conv.ProcessingList, "0"))
+		b, err := redis.Bytes(c.Do("BRPOPLPUSH", conv.Redis.WaitingList, conv.Redis.ProcessingList, "0"))
 		c.Close()
 		if err != nil {
 			log.Error("error while fetching new task", err)
@@ -204,7 +204,7 @@ func (conv *Conveyor) process(data []byte) {
 	c := db.Pool.Get()
 	defer c.Close()
 
-	c.Do("INCR", conv.StatsTotal)
+	c.Do("INCR", conv.Redis.StatsTotal)
 
 	task := &Task{}
 	err := json.Unmarshal(data, task)
@@ -247,7 +247,7 @@ func (conv *Conveyor) process(data []byte) {
 		log.Infof("task completed successfully: %s", resp.Status)
 
 		endTime := time.Now()
-		c.Do("INCRBY", conv.StatsTotalTime, strconv.Itoa(int(endTime.Sub(startTime))))
+		c.Do("INCRBY", conv.Redis.StatsTotalTime, strconv.Itoa(int(endTime.Sub(startTime))))
 		return
 	} else if err == nil && resp.StatusCode >= 400 && resp.StatusCode <= 499 {
 		conv.removeProcessing(&c, data, "error")
@@ -262,16 +262,16 @@ func (conv *Conveyor) process(data []byte) {
 		return
 	}
 
-	c.Do("INCR", conv.StatsTotalError)
+	c.Do("INCR", conv.Redis.StatsTotalError)
 
-	delay, err := conv.Scheduler.Reschedule(conv.ProcessingList, task, data)
+	delay, err := conv.Scheduler.Reschedule(conv.Redis.ProcessingList, task, data)
 	if err != nil {
 		log.Info("task failed")
 		return
 	}
 
 	log.Infof("task failed, rescheduled for retry in %d seconds", delay)
-	c.Do("INCR", conv.StatsTotalRescheduled)
+	c.Do("INCR", conv.Redis.StatsTotalRescheduled)
 }
 
 func (conv *Conveyor) reset() error {
@@ -282,7 +282,7 @@ func (conv *Conveyor) reset() error {
 			log.Error("", err)
 			time.Sleep(5 * time.Second)
 		} else {
-			s, err := c.Do("RPOPLPUSH", conv.ProcessingList, conv.WaitingList)
+			s, err := c.Do("RPOPLPUSH", conv.Redis.ProcessingList, conv.Redis.WaitingList)
 			if err != nil {
 				c.Close()
 				log.Error("", err)
@@ -307,8 +307,8 @@ func (conv *Conveyor) Flush() error {
 	defer c.Close()
 
 	c.Send("MULTI")
-	c.Send("DEL", conv.WaitingList)
-	c.Send("DEL", conv.ProcessingList)
+	c.Send("DEL", conv.Redis.WaitingList)
+	c.Send("DEL", conv.Redis.ProcessingList)
 	c.Send("DEL", conv.Scheduler.ScheduleList)
 	_, err := redis.Values(c.Do("EXEC"))
 	return err
@@ -323,7 +323,7 @@ func (conv *Conveyor) AddTask(target, payload string) (*Task, error) {
 	c := db.Pool.Get()
 	defer c.Close()
 
-	ID, err := redis.Int(c.Do("INCR", conv.TaskIdKey))
+	ID, err := redis.Int(c.Do("INCR", conv.Redis.TaskIdKey))
 	if err != nil {
 		log.Error("", err)
 		return nil, err
@@ -342,7 +342,7 @@ func (conv *Conveyor) AddTask(target, payload string) (*Task, error) {
 		log.Error("", err)
 		return nil, err
 	}
-	_, err = c.Do("LPUSH", conv.WaitingList, t)
+	_, err = c.Do("LPUSH", conv.Redis.WaitingList, t)
 	if err != nil {
 		log.Error("", err)
 		return nil, err
@@ -364,15 +364,15 @@ func (conv *Conveyor) Stats() (*Statistic, error) {
 	}
 
 	c.Send("MULTI")
-	c.Send("LLEN", conv.WaitingList)
-	c.Send("LLEN", conv.ProcessingList)
+	c.Send("LLEN", conv.Redis.WaitingList)
+	c.Send("LLEN", conv.Redis.ProcessingList)
 	c.Send("ZCARD", conv.Scheduler.ScheduleList)
-	c.Send("GET", conv.StatsTotal)
-	c.Send("GET", conv.StatsTotalOK)
-	c.Send("GET", conv.StatsTotalRescheduled)
-	c.Send("GET", conv.StatsTotalError)
-	c.Send("GET", conv.StatsTotalTime)
-	c.Send("GET", conv.StatsAvgTimeRecent)
+	c.Send("GET", conv.Redis.StatsTotal)
+	c.Send("GET", conv.Redis.StatsTotalOK)
+	c.Send("GET", conv.Redis.StatsTotalRescheduled)
+	c.Send("GET", conv.Redis.StatsTotalError)
+	c.Send("GET", conv.Redis.StatsTotalTime)
+	c.Send("GET", conv.Redis.StatsAvgTimeRecent)
 	reply, err := redis.Values(c.Do("EXEC"))
 	if err != nil {
 		log.Error("", err)
@@ -449,7 +449,7 @@ func (conv *Conveyor) Stats() (*Statistic, error) {
 }
 
 func (conv *Conveyor) removeProcessing(c *redis.Conn, data []byte, status string) error {
-	_, err := redis.Int((*c).Do("LREM", conv.ProcessingList, "1", data))
+	_, err := redis.Int((*c).Do("LREM", conv.Redis.ProcessingList, "1", data))
 	if err != nil {
 		log.Error("", err)
 		return err
@@ -457,23 +457,22 @@ func (conv *Conveyor) removeProcessing(c *redis.Conn, data []byte, status string
 
 	switch status {
 	case "ok":
-		(*c).Do("INCR", conv.StatsTotalOK)
+		(*c).Do("INCR", conv.Redis.StatsTotalOK)
 	case "error":
-		(*c).Do("INCR", conv.StatsTotalError)
+		(*c).Do("INCR", conv.Redis.StatsTotalError)
 	}
 
 	return nil
 }
 
-func GetAllTasks(conveyorID string) ([]Task, error) {
+func (conv *Conveyor) Tasks() ([]Task, error) {
 	if db.Pool == nil {
 		return nil, errors.New("Database not initialized")
 	}
 	c := db.Pool.Get()
 	defer c.Close()
 
-	queueList := "qdo:" + conveyorID + ":" + WaitingList
-	reply, err := redis.Values(c.Do("LRANGE", queueList, "0", "-1"))
+	reply, err := redis.Values(c.Do("LRANGE", conv.Redis.WaitingList, "0", "-1"))
 	if err != nil {
 		log.Error("", err)
 		return nil, err

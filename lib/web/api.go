@@ -154,14 +154,23 @@ func updateConveyor(w http.ResponseWriter, r *http.Request) {
 // API handler for GET /api/conveyor/{conveyor_id}/task
 func getAllTasks(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
-	conveyorID := vars["conveyor_id"]
+	id := vars["conveyor_id"]
+	conv, err := queue.GetConveyor(id)
+	if err != nil {
+		http.Error(w, "", http.StatusInternalServerError)
+		return
+	}
+	if conv == nil {
+		http.Error(w, "", http.StatusNotFound)
+		return
+	}
 
-	res, err := queue.GetAllTasks(conveyorID)
+	res, err := conv.Tasks()
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
-	ReturnJSON(w, r, JSONListResult("/api/conveyor/"+conveyorID+"/task", len(res), res))
+	ReturnJSON(w, r, JSONListResult("/api/conveyor/"+id+"/task", len(res), res))
 }
 
 // API handler for POST /api/conveyor/{conveyor_id}/task.
