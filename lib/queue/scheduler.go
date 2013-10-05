@@ -10,10 +10,13 @@ import (
 	"github.com/borgenk/qdo/lib/log"
 )
 
-const ScheduleId = "queue:scheduleid"
-const ScheduleList = "queue:schedulelist"
-
 type Scheduler struct {
+	// Conveyor ID.
+	ConveyorID string `json:"conveyor_id"`
+
+	// Conveyor status signal.
+	notifySignal chan convSignal `json:"-"`
+
 	// Conveyor scheduler id name.
 	ScheduleId string `json:"schedule_id"`
 
@@ -26,8 +29,9 @@ type Scheduler struct {
 
 func NewScheduler(conveyorID string) *Scheduler {
 	scheduler := &Scheduler{
-		ScheduleId:   "qdo:" + conveyorID + ":" + ScheduleId,
-		ScheduleList: "qdo:" + conveyorID + ":" + ScheduleList,
+		ConveyorID:   conveyorID,
+		ScheduleId:   "qdo:" + conveyorID + ":queue:scheduleid",
+		ScheduleList: "qdo:" + conveyorID + ":queue:schedulelist",
 		Rate:         5 * time.Second,
 	}
 	return scheduler
@@ -54,8 +58,19 @@ if tasks then
 end`
 
 func (sched *Scheduler) Start(queueList string) {
+	sched.notifySignal = make(chan convSignal)
+
 	var script = redis.NewScript(3, schedulerLua)
 	for {
+		select {
+		case sig := <-sched.notifySignal:
+			if sig == stop {
+				log.Infof("stopping scheduler for conveyor %s", sched.ConveyorID)
+				return
+			}
+		default:
+		}
+
 		c := db.Pool.Get()
 		now := int32(time.Now().Unix())
 		_, err := script.Do(c, sched.ScheduleList, now, queueList)

@@ -18,6 +18,10 @@ Update conveyor
 curl http://127.0.0.1:8080/api/conveyor/foo \
    -d paused=true
 
+Delete conveyor
+----------------------
+curl -X DELETE http://127.0.0.1:8080/api/conveyor/foo
+
 Create task
 ----------------------
 curl http://127.0.0.1:8080/api/conveyor/foo/task \

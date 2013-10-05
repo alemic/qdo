@@ -148,7 +148,18 @@ func updateConveyor(w http.ResponseWriter, r *http.Request) {
 	} else if paused == "false" {
 		conv.Resume()
 	}
-	ReturnJSON(w, r, conv)
+	ReturnJSON(w, r, nil)
+}
+
+func deleteConveyor(w http.ResponseWriter, r *http.Request) {
+	vars := mux.Vars(r)
+	id := vars["conveyor_id"]
+	err := queue.RemoveConveyor(id)
+	if err != nil {
+		http.Error(w, "", http.StatusInternalServerError)
+		return
+	}
+	ReturnJSON(w, r, nil)
 }
 
 // API handler for GET /api/conveyor/{conveyor_id}/task

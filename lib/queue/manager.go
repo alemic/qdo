@@ -13,8 +13,6 @@ import (
 	"github.com/borgenk/qdo/lib/log"
 )
 
-const ManagerConveyorKey = "qdo:manager:conveyor"
-
 type Manager struct {
 	ConveyorsKey string
 	Conveyors    map[string]*Conveyor
@@ -24,13 +22,13 @@ var manager *Manager
 
 func StartManager() error {
 	manager = &Manager{
-		ConveyorsKey: ManagerConveyorKey,
+		ConveyorsKey: "qdo:manager:conveyor",
 		Conveyors:    make(map[string]*Conveyor),
 	}
-	return manager.Start()
+	return manager.start()
 }
 
-func (man *Manager) Start() error {
+func (man *Manager) start() error {
 	if db.Pool == nil {
 		return errors.New("Database not initialized")
 	}
@@ -67,6 +65,31 @@ func (man *Manager) Start() error {
 	return nil
 }
 
+func GetConveyor(conveyorID string) (*Conveyor, error) {
+	if manager == nil {
+		return nil, errors.New("Manager not initialized")
+	}
+
+	conv, ok := manager.Conveyors[conveyorID]
+	if !ok {
+		return nil, nil
+	}
+
+	return conv, nil
+}
+
+func GetAllConveyor() []*Conveyor {
+	if manager == nil {
+		return nil
+	}
+
+	resp := make([]*Conveyor, 0, len(manager.Conveyors))
+	for _, v := range manager.Conveyors {
+		resp = append(resp, v)
+	}
+	return resp
+}
+
 func AddConveyor(conveyorID string, config *Config) error {
 	// TODO: Implement locking.
 	manager.Conveyors[conveyorID] = NewConveyor(conveyorID, config)
@@ -92,27 +115,30 @@ func AddConveyor(conveyorID string, config *Config) error {
 	return nil
 }
 
-func (man *Manager) RemoveConveyor(conveyorID string) error {
-	return nil
-}
-
-func GetAllConveyor() []*Conveyor {
-	resp := make([]*Conveyor, 0, len(manager.Conveyors))
-	for _, v := range manager.Conveyors {
-		resp = append(resp, v)
-	}
-	return resp
-}
-
-func GetConveyor(conveyorID string) (*Conveyor, error) {
+func RemoveConveyor(conveyorID string) error {
 	if manager == nil {
-		return nil, nil
+		return errors.New("Manager not initialized")
 	}
 
 	conv, ok := manager.Conveyors[conveyorID]
 	if !ok {
-		return nil, nil
+		return errors.New("Conveyor does not exist")
 	}
 
-	return conv, nil
+	if db.Pool == nil {
+		err := errors.New("Database not initialized")
+		log.Error("", err)
+		return err
+	}
+	c := db.Pool.Get()
+	defer c.Close()
+
+	_, err := redis.Int(c.Do("HDEL", manager.ConveyorsKey, conv.ID))
+	if err != nil {
+		return err
+	}
+
+	go conv.Stop()
+
+	return nil
 }

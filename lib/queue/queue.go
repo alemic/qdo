@@ -16,6 +16,15 @@ import (
 	"github.com/borgenk/qdo/lib/log"
 )
 
+type convSignal int
+
+const (
+	start  convSignal = iota
+	pause  convSignal = iota
+	resume convSignal = iota
+	stop   convSignal = iota
+)
+
 type Conveyor struct {
 	// Define resource.
 	Object string `json:"object"`
@@ -29,11 +38,14 @@ type Conveyor struct {
 	// Conveyor changed timestamp.
 	Changed time.Time `json:"changed"`
 
-	// Conveyor state.
+	// Conveyor is in pause state.
 	Paused bool `json:"paused"`
 
 	// Limit number of simultaneous workers processing tasks.
-	NotifyReady chan int `json:"-"`
+	notifyReady chan int `json:"-"`
+
+	// Conveyor status signal.
+	notifySignal chan convSignal `json:"-"`
 
 	// Conveyor configurations.
 	Config Config `json:"config"`
@@ -150,7 +162,8 @@ func (conv *Conveyor) Start() error {
 	log.Infof("starting conveyor \"%s\" with %d worker(s)", conv.ID,
 		conv.Config.NWorker)
 
-	conv.NotifyReady = make(chan int, conv.Config.NWorker)
+	conv.notifyReady = make(chan int, conv.Config.NWorker)
+	conv.notifySignal = make(chan convSignal)
 
 	if conv.Redis == nil {
 		conv.Redis = NewRedisKeys(conv.ID)
@@ -168,21 +181,40 @@ func (conv *Conveyor) Start() error {
 	go conv.Scheduler.Start(conv.Redis.WaitingList)
 
 	for {
-		// Block until conveyor is ready to process next task.
-		conv.NotifyReady <- 1
+		select {
+		case sig := <-conv.notifySignal:
+			if sig == stop {
+				log.Infof("stopping conveyor %s", conv.ID)
+				return nil
+			} else if sig == pause {
+				log.Infof("pausing conveyor %s", conv.ID)
+				conv.Paused = true
+			} else if sig == resume {
+				log.Infof("resuming conveyor %s", conv.ID)
+				conv.Paused = false
+			}
+		default:
+		}
 
 		if conv.Paused {
+			log.Debug("sleeping")
 			time.Sleep(1 * time.Second)
-			<-conv.NotifyReady
 			continue
 		}
 
+		// Block until conveyor is ready to process next task.
+		log.Debug("wating on notify ready")
+		conv.notifyReady <- 1
+
+		// Block until Redis sends next element from list.
+		log.Debug("getting new db connection")
 		c := db.Pool.Get()
-		b, err := redis.Bytes(c.Do("BRPOPLPUSH", conv.Redis.WaitingList, conv.Redis.ProcessingList, "0"))
+		log.Debug("waiting on new task")
+		b, err := redis.Bytes(c.Do("BRPOPLPUSH", conv.Redis.WaitingList, conv.Redis.ProcessingList, "5"))
 		c.Close()
 		if err != nil {
-			log.Error("error while fetching new task", err)
 			time.Sleep(50 * time.Millisecond)
+			<-conv.notifyReady
 			continue
 		}
 
@@ -193,20 +225,32 @@ func (conv *Conveyor) Start() error {
 			time.Sleep(time.Duration(time.Second / (time.Duration(conv.Config.Throttle) * time.Second)))
 		}
 	}
+	return nil
+}
+
+func (conv *Conveyor) Stop() {
+	if conv.notifySignal == nil {
+		panic("nil notifySignal")
+	}
+	go func() { conv.notifySignal <- stop }()
 }
 
 func (conv *Conveyor) Pause() {
-	// TODO Mutex lock / sync change to redis
-	conv.Paused = true
+	if conv.notifySignal == nil {
+		panic("nil notifySignal")
+	}
+	go func() { conv.notifySignal <- pause }()
 }
 
 func (conv *Conveyor) Resume() {
-	// TODO Mutex lock / sync change to redis
-	conv.Paused = false
+	if conv.notifySignal == nil {
+		panic("nil notifySignal")
+	}
+	go func() { conv.notifySignal <- resume }()
 }
 
 func (conv *Conveyor) process(data []byte) {
-	defer func() { <-conv.NotifyReady }()
+	defer func() { <-conv.notifyReady }()
 
 	startTime := time.Now()
 
