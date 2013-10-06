@@ -23,4 +23,5 @@ EXPOSE 8080
 ADD docker/redis/redis.conf /etc/redis/redis.conf
 ADD docker/supervisord.conf /etc/supervisord.conf
 ADD lib/web/template/ /var/www/
+ADD lib/web/static/ /var/www/static
 ADD qdo /usr/bin/qdo

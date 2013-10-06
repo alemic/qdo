@@ -4,11 +4,20 @@
   <title>{{.Title}}</title>
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <meta name="description" content="QDo.">
-  <!--<link rel=stylesheet type=text/css href="/static/css/style.css">-->
+  <link rel=stylesheet type=text/css href="/static/normalize.css">
+  <link rel=stylesheet type=text/css href="/static/style.css">
   {{end}}
 </head>
 <body>
   <header></header>
+  <nav>
+    <div class="top">
+      <h2>
+        <a href="http://github.com/borgenk/qdo">QDo <span class="version">v0.1</span></a>
+      </h2>
+    </div>
+    <div class="bottom"></div>
+  </nav>
   <main>
     {{template "main" .}}
   </main>

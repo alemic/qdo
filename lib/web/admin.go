@@ -5,9 +5,6 @@ import (
 
 	"github.com/borgenk/qdo/third_party/github.com/gorilla/mux"
 
-	"github.com/borgenk/qdo/lib/db"
-	_ "github.com/borgenk/qdo/lib/log"
-
 	"github.com/borgenk/qdo/lib/queue"
 )
 
@@ -17,64 +14,65 @@ type Header struct {
 
 type Page struct {
 	Header Header
+	Title  string
 	Result interface{}
 }
 
-func MainPage(w http.ResponseWriter, r *http.Request) {
-	if db.Pool == nil {
-		return
-	}
-
-	h := Header{
-		Title: "QDo",
-	}
-	p := &Page{
-		Header: h,
-	}
-	RenderTemplate(w, "index.html", p)
-}
-
-func NewConveyor(w http.ResponseWriter, r *http.Request) {
-	h := Header{
-		Title: "QDo",
-	}
-	p := &Page{
-		Header: h,
-	}
-	RenderTemplate(w, "conveyor_form.html", p)
-}
-
-func CreateNewConveyor(w http.ResponseWriter, r *http.Request) {
-	createConveyor(w, r)
+type ConveyorResult struct {
+	ID              string
+	Status          string
+	MaxRate         int32
+	MaxConcurrent   int32
+	TasksWaiting    int64
+	TasksProcessing int64
 }
 
 type Result struct {
-	List []*queue.Conveyor
+	List []*ConveyorResult
 }
 
-func Conveyors(w http.ResponseWriter, r *http.Request) {
-	res := queue.GetAllConveyor()
+func viewAllConveyors(w http.ResponseWriter, r *http.Request) {
+	res := make([]*ConveyorResult, 0)
+	convs := queue.GetAllConveyor()
+	for _, v := range convs {
+		conv := &ConveyorResult{
+			ID:              v.ID,
+			Status:          "Active",
+			MaxRate:         v.Config.Throttle,
+			MaxConcurrent:   v.Config.NWorker,
+			TasksWaiting:    0,
+			TasksProcessing: 0,
+		}
+		if v.Paused {
+			conv.Status = "Paused"
+		}
+		stats, err := v.Stats()
+		if err == nil {
+			conv.TasksWaiting = stats.InQueue
+			conv.TasksProcessing = stats.InProcessing
+		}
+		res = append(res, conv)
+	}
 
 	h := Header{
 		Title: "QDo",
 	}
 	p := &Page{
 		Header: h,
+		Title:  "Conveyors",
 		Result: res,
 	}
-	RenderTemplate(w, "conveyors.html", p)
+	RenderTemplate(w, "view_conveyor_list.html", p)
 }
 
-func adminViewConveyor(w http.ResponseWriter, r *http.Request) {
+func viewConveyor(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
 	id := vars["conveyor_id"]
 	res, err := queue.GetConveyor(id)
 	if err != nil {
-		// error template
 		return
 	}
 	if res == nil {
-		// not found template
 		return
 	}
 
@@ -86,4 +84,18 @@ func adminViewConveyor(w http.ResponseWriter, r *http.Request) {
 		Result: res,
 	}
 	RenderTemplate(w, "view_conveyor.html", p)
+}
+
+func newConveyor(w http.ResponseWriter, r *http.Request) {
+	h := Header{
+		Title: "QDo",
+	}
+	p := &Page{
+		Header: h,
+	}
+	RenderTemplate(w, "create_conveyor.html", p)
+}
+
+func newConveyorCreate(w http.ResponseWriter, r *http.Request) {
+	createConveyor(w, r)
 }

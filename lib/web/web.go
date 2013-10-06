@@ -22,25 +22,21 @@ func RenderTemplate(w http.ResponseWriter, tmpl string, p interface{}) {
 }
 
 func Run(port int, documentRoot string) {
-	RegisterTemplate("index.html", template.Must(template.ParseFiles(
-		documentRoot+"index.html", documentRoot+"layout.html")))
+	RegisterTemplate("view_conveyor_list.html", template.Must(template.ParseFiles(
+		documentRoot+"view_conveyor_list.html", documentRoot+"layout.html")))
 
-	RegisterTemplate("conveyor_form.html", template.Must(template.ParseFiles(
-		documentRoot+"conveyor_form.html", documentRoot+"layout.html")))
-
-	RegisterTemplate("conveyors.html", template.Must(template.ParseFiles(
-		documentRoot+"conveyors.html", documentRoot+"layout.html")))
+	RegisterTemplate("create_conveyor.html", template.Must(template.ParseFiles(
+		documentRoot+"create_conveyor.html", documentRoot+"layout.html")))
 
 	RegisterTemplate("view_conveyor.html", template.Must(template.ParseFiles(
 		documentRoot+"view_conveyor.html", documentRoot+"layout.html")))
 
 	r := mux.NewRouter()
-	r.HandleFunc("/", Conveyors).Methods("GET")
-	r.HandleFunc("/admin/conveyors", Conveyors).Methods("GET")
-	r.HandleFunc("/admin/conveyors/{conveyor_id}", adminViewConveyor).Methods("GET")
-
-	r.HandleFunc("/conveyor/new", NewConveyor).Methods("GET")
-	r.HandleFunc("/conveyor/new", CreateNewConveyor).Methods("POST")
+	r.HandleFunc("/", viewAllConveyors).Methods("GET")
+	r.HandleFunc("/conveyors", viewAllConveyors).Methods("GET")
+	r.HandleFunc("/conveyors/{conveyor_id}", viewConveyor).Methods("GET")
+	r.HandleFunc("/conveyor/new", newConveyor).Methods("GET")
+	r.HandleFunc("/conveyor/new", newConveyorCreate).Methods("POST")
 
 	// API Paths.
 	r.HandleFunc("/api/conveyor", getAllConveyor).Methods("GET")
@@ -52,6 +48,9 @@ func Run(port int, documentRoot string) {
 	r.HandleFunc("/api/conveyor/{conveyor_id}/task", createTask).Methods("POST")
 	r.HandleFunc("/api/conveyor/{conveyor_id}/task", deleteAllTasks).Methods("DELETE")
 	r.HandleFunc("/api/conveyor/{conveyor_id}/stats", getStats).Methods("GET")
+
+	r.PathPrefix("/static/").Handler(
+		http.StripPrefix("/static/", http.FileServer(http.Dir(documentRoot+"static/"))))
 
 	http.Handle("/", r)
 	http.ListenAndServe(fmt.Sprintf(":%d", port), nil)

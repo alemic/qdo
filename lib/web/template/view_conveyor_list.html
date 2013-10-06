@@ -1,0 +1,31 @@
+{{define "main"}}
+<div class="top">
+  <h1 class="title">{{.Title}}</h1>
+</div>
+<div class="content">
+  <table>
+    <thead>
+      <tr>
+        <th>ID</th>
+        <th>Status</th>
+        <th>Max rate/s</th>
+        <th>Max concurrent</th>
+        <th>Tasks waiting</th>
+        <th>Tasks processing</th>
+      </tr>
+    </thead>
+    <tbody>
+      {{range .Result}}
+      <tr>
+        <td><a href="/conveyors/{{.ID}}">{{.ID}}</a></td>
+        <td>{{.Status}}</td>
+        <td>{{.MaxRate}}</td>
+        <td>{{.MaxConcurrent}}</td>
+        <td>{{.TasksWaiting}}</td>
+        <td>{{.TasksProcessing}}</td>
+      </tr>
+      {{end}}
+    </tbody>
+  </table>
+</div>
+{{end}}
