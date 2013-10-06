@@ -3,23 +3,33 @@ body {
   background-color: #FFFFFF;
   font-family: "Helvetica Neue",Helvetica,Arial,sans-serif;
 }
+h2 {
+  font-size: 18px;
+  font-weight: normal;
+  color: #999999;
+  margin: 0 0 10px 0;
+}
+ul {
+  list-style-type: none;
+  margin: 0;
+  padding: 0;
+}
 nav {
   position: absolute;
   top: 0;
   left: 0;
   bottom: 0;
   background-color: #252827;
-  width: 100px;
+  width: 60px;
   padding: 18px;
   color: #a7abb1;
-
   overflow: hidden;
 }
 nav .top,
 nav .bottom {
   position: absolute;
   left: 0;
-  width: 100px;
+  width: 60px;
   padding: 18px;
 }
 nav .top {
@@ -37,10 +47,19 @@ nav .top a {
   opacity: 0.4;
 }
 nav .top .version {
+  color: #000000;
   font-size: 12px;
+  opacity: 0.4;
+  margin-left: 18px;
+}
+.site-nav {
+  margin-top: 50px;
+  font-size: 30px;
+  padding-left: 14px;
+  padding-right: 14px;
 }
 main {
-  margin-left: 156px;
+  margin-left: 106px;
   overflow-y: auto;
   position: absolute;
   top: 0;
@@ -52,8 +71,9 @@ main .top {
   height: 60px;
   padding: 18px;
 }
-main .top .title {
+main .top .title a {
   color: #D3D3D3;
+  text-decoration: none;
 }
 main .content {
   padding: 18px;
@@ -75,4 +95,61 @@ table tbody tr:nth-child(odd) {
 }
 table a {
   color: #000000;
+}
+
+.conveyor-nav {
+  overflow: hidden;
+  margin-bottom: 30px;
+}
+.conveyor-nav>li {
+  float: left;
+  margin-right: 6px;
+}
+.conveyor-nav>li>a {
+  display: block;
+  padding: 5px 10px;
+  background-color: #4B4B4B;
+  color: #E4E4E4;
+  text-decoration: none;
+  font-size: 12px;
+}
+.conveyor {
+  margin-bottom: 30px;
+}
+.conveyor dl {
+  margin: 5px 0 0 0;
+}
+.conveyor dl dt {
+  display: block;
+  margin: 0;
+  float: left;
+  margin-right: 10px;
+  color: #999999;
+}
+.conveyor dl dd {
+  margin: 0 0 0 22px;
+  overflow-x: hidden;
+  text-overflow: ellipsis;
+  text-align: right;
+}
+.conveyor {
+  overflow: hidden;
+}
+.conveyor .stats,
+.conveyor .config {
+  float: left;
+  height: 250px;
+  min-width: 300px;
+  margin-right: 40px;
+  background-color: #FAFAFA;
+  padding: 10px 20px;
+}
+.conveyor .stats dl dt {
+  width: 180px;
+}
+.conveyor .config dl dt {
+  width: 110px;
+}
+.conveyor dl dd .unit {
+  color: #999999;
 }

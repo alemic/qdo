@@ -1,6 +1,7 @@
 package web
 
 import (
+	"fmt"
 	"net/http"
 
 	"github.com/borgenk/qdo/third_party/github.com/gorilla/mux"
@@ -18,7 +19,7 @@ type Page struct {
 	Result interface{}
 }
 
-type ConveyorResult struct {
+type ConveyorRowResult struct {
 	ID              string
 	Status          string
 	MaxRate         int32
@@ -27,15 +28,11 @@ type ConveyorResult struct {
 	TasksProcessing int64
 }
 
-type Result struct {
-	List []*ConveyorResult
-}
-
 func viewAllConveyors(w http.ResponseWriter, r *http.Request) {
-	res := make([]*ConveyorResult, 0)
+	res := make([]*ConveyorRowResult, 0)
 	convs := queue.GetAllConveyor()
 	for _, v := range convs {
-		conv := &ConveyorResult{
+		conv := &ConveyorRowResult{
 			ID:              v.ID,
 			Status:          "Active",
 			MaxRate:         v.Config.Throttle,
@@ -55,7 +52,7 @@ func viewAllConveyors(w http.ResponseWriter, r *http.Request) {
 	}
 
 	h := Header{
-		Title: "QDo",
+		Title: "Conveyors | QDo",
 	}
 	p := &Page{
 		Header: h,
@@ -65,23 +62,44 @@ func viewAllConveyors(w http.ResponseWriter, r *http.Request) {
 	RenderTemplate(w, "view_conveyor_list.html", p)
 }
 
+type ConveyorResult struct {
+	Conv  *queue.Conveyor
+	Stats *queue.Statistic
+	Tasks []queue.Task
+}
+
 func viewConveyor(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
 	id := vars["conveyor_id"]
-	res, err := queue.GetConveyor(id)
+	conv, err := queue.GetConveyor(id)
 	if err != nil {
 		return
 	}
-	if res == nil {
+	if conv == nil {
 		return
 	}
+	convRes := &ConveyorResult{
+		Conv: conv,
+	}
+	stats, err := conv.Stats()
+	if err != nil {
+		return
+	}
+	convRes.Stats = stats
+
+	tasks, err := conv.Tasks()
+	if err != nil {
+		return
+	}
+	convRes.Tasks = tasks
 
 	h := Header{
-		Title: "QDo",
+		Title: fmt.Sprintf("Conveyor %s | QDo", conv.ID),
 	}
 	p := &Page{
 		Header: h,
-		Result: res,
+		Title:  conv.ID,
+		Result: convRes,
 	}
 	RenderTemplate(w, "view_conveyor.html", p)
 }
