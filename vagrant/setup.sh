@@ -7,7 +7,6 @@ if [ -e "/opt/vagrant-installed" ]; then
 fi
 mkdir /opt/vagrant-installed
 
-
 export DEBIAN_FRONTEND=noninteractive
 
 # Date
@@ -16,6 +15,7 @@ TIMEZONE=$(head -n 1 "/etc/timezone")
 echo "Europe/Oslo" | tee /etc/timezone
 dpkg-reconfigure --frontend noninteractive tzdata
 
+apt-get update -q -y
 apt-get install -q -y python-software-properties git
 
 # Go development environment

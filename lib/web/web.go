@@ -1,20 +1,39 @@
 package web
 
 import (
+	"errors"
 	"fmt"
 	"html/template"
 	"net/http"
+	"os"
+	//"time"
 
 	"github.com/borgenk/qdo/third_party/github.com/gorilla/mux"
+
+	"github.com/borgenk/qdo/lib/log"
 )
+
+var templateList = []string{
+	"layout.html",
+	"view_conveyor_list.html",
+	"create_conveyor.html",
+	"view_conveyor.html",
+}
 
 var Templates = make(map[string]*template.Template)
 
-func RegisterTemplate(name string, t *template.Template) {
+func validateFilepath(filepath string) {
+	if _, err := os.Stat(filepath); os.IsNotExist(err) {
+		log.Error(filepath, errors.New("File not found"))
+		os.Exit(1)
+	}
+}
+
+func registerTemplate(name string, t *template.Template) {
 	Templates[name] = t
 }
 
-func RenderTemplate(w http.ResponseWriter, tmpl string, p interface{}) {
+func renderTemplate(w http.ResponseWriter, tmpl string, p interface{}) {
 	err := Templates[tmpl].ExecuteTemplate(w, "layout", p)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
@@ -22,14 +41,14 @@ func RenderTemplate(w http.ResponseWriter, tmpl string, p interface{}) {
 }
 
 func Run(port int, documentRoot string) {
-	RegisterTemplate("view_conveyor_list.html", template.Must(template.ParseFiles(
-		documentRoot+"view_conveyor_list.html", documentRoot+"layout.html")))
-
-	RegisterTemplate("create_conveyor.html", template.Must(template.ParseFiles(
-		documentRoot+"create_conveyor.html", documentRoot+"layout.html")))
-
-	RegisterTemplate("view_conveyor.html", template.Must(template.ParseFiles(
-		documentRoot+"view_conveyor.html", documentRoot+"layout.html")))
+	for k, v := range templateList {
+		validateFilepath(documentRoot + "template/" + v)
+		if k == 0 {
+			continue
+		}
+		registerTemplate(v, template.Must(template.ParseFiles(
+			documentRoot+"template/"+v, documentRoot+"template/layout.html")))
+	}
 
 	r := mux.NewRouter()
 	r.HandleFunc("/", viewAllConveyors).Methods("GET")

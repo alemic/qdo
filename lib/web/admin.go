@@ -59,13 +59,13 @@ func viewAllConveyors(w http.ResponseWriter, r *http.Request) {
 		Title:  "Conveyors",
 		Result: res,
 	}
-	RenderTemplate(w, "view_conveyor_list.html", p)
+	renderTemplate(w, "view_conveyor_list.html", p)
 }
 
 type ConveyorResult struct {
 	Conv  *queue.Conveyor
 	Stats *queue.Statistic
-	Tasks []queue.Task
+	Tasks []*queue.Task
 }
 
 func viewConveyor(w http.ResponseWriter, r *http.Request) {
@@ -87,11 +87,7 @@ func viewConveyor(w http.ResponseWriter, r *http.Request) {
 	}
 	convRes.Stats = stats
 
-	tasks, err := conv.Tasks()
-	if err != nil {
-		return
-	}
-	convRes.Tasks = tasks
+	convRes.Tasks = conv.Tasks()
 
 	h := Header{
 		Title: fmt.Sprintf("Conveyor %s | QDo", conv.ID),
@@ -101,7 +97,7 @@ func viewConveyor(w http.ResponseWriter, r *http.Request) {
 		Title:  conv.ID,
 		Result: convRes,
 	}
-	RenderTemplate(w, "view_conveyor.html", p)
+	renderTemplate(w, "view_conveyor.html", p)
 }
 
 func newConveyor(w http.ResponseWriter, r *http.Request) {
@@ -111,7 +107,7 @@ func newConveyor(w http.ResponseWriter, r *http.Request) {
 	p := &Page{
 		Header: h,
 	}
-	RenderTemplate(w, "create_conveyor.html", p)
+	renderTemplate(w, "create_conveyor.html", p)
 }
 
 func newConveyorCreate(w http.ResponseWriter, r *http.Request) {

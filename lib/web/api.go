@@ -176,11 +176,7 @@ func getAllTasks(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	res, err := conv.Tasks()
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return
-	}
+	res := conv.Tasks()
 	ReturnJSON(w, r, JSONListResult("/api/conveyor/"+id+"/task", len(res), res))
 }
 
@@ -198,11 +194,7 @@ func createTask(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "conveyor id does not exsist", http.StatusBadRequest)
 		return
 	}
-	res, err := conveyor.AddTask(r.FormValue("target"), r.FormValue("payload"))
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return
-	}
+	res := conveyor.Add(r.FormValue("target"), r.FormValue("payload"))
 	ReturnJSON(w, r, res)
 }
 

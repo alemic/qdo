@@ -2,17 +2,18 @@ package queue
 
 import (
 	"bytes"
-	"encoding/json"
-	"errors"
+	"container/list"
+	"crypto/sha1"
+	"fmt"
 	"net"
 	"net/http"
 	"net/url"
-	"strconv"
+	"sync"
 	"time"
 
-	"github.com/borgenk/qdo/third_party/github.com/garyburd/redigo/redis"
+	//"github.com/borgenk/qdo/third_party/github.com/syndtr/goleveldb/leveldb"
+	//"github.com/borgenk/qdo/third_party/github.com/syndtr/goleveldb/leveldb/opt"
 
-	"github.com/borgenk/qdo/lib/db"
 	"github.com/borgenk/qdo/lib/log"
 )
 
@@ -41,52 +42,25 @@ type Conveyor struct {
 	// Conveyor is in pause state.
 	Paused bool `json:"paused"`
 
+	// Conveyor configurations.
+	Config Config `json:"config"`
+
+	// Scheduler.
+	Scheduler *Scheduler `json:"scheduler"`
+
+	// Conveyor items.
+	tasks *list.List `json:"-"`
+
+	// Generate new task id by reading from channel.
+	newTaskId chan string `json:"-"`
+
 	// Limit number of simultaneous workers processing tasks.
 	notifyReady chan int `json:"-"`
 
 	// Conveyor status signal.
 	notifySignal chan convSignal `json:"-"`
 
-	// Conveyor configurations.
-	Config Config `json:"config"`
-
-	// Redis keys.
-	Redis *RedisKeys `json:"-"`
-
-	// Scheduler.
-	Scheduler *Scheduler `json:"scheduler"`
-}
-
-type RedisKeys struct {
-	// Task ID key.
-	TaskIdKey string `json:"task_id_key"`
-
-	// Conveyor waiting list name.
-	WaitingList string `json:"waiting_list"`
-
-	// Conveyor processing list name.
-	ProcessingList string `json:"processing_list"`
-
-	// Name of log message list.
-	LogMessageList string `json:"log_message_list"`
-
-	// Name of statistic key: total tasks processed.
-	StatsTotal string `json:"stats_total"`
-
-	// Name of statistic key: total tasks processed ok.
-	StatsTotalOK string `json:"stats_total_ok"`
-
-	// Name of statistic key: total tasks rescheduled.
-	StatsTotalRescheduled string `json:"stats_total_rescheduled"`
-
-	// Name of statistic key: total tasks processed with error.
-	StatsTotalError string `json:"stats_total_error"`
-
-	// Name of statistic key: average time spent per task.
-	StatsTotalTime string `json:"stats_total_time"`
-
-	// Name of statistic key: average time spent recently per task.
-	StatsAvgTimeRecent string `json:"stats_av_time_recent"`
+	cond *sync.Cond
 }
 
 type Config struct {
@@ -121,7 +95,7 @@ type Statistic struct {
 
 type Task struct {
 	Object  string `json:"object"`
-	ID      int    `json:"id"`
+	ID      string `json:"id"`
 	Target  string `json:"target"`
 	Payload string `json:"payload"`
 	Tries   int32  `json:"tries"`
@@ -130,55 +104,49 @@ type Task struct {
 
 func NewConveyor(conveyorID string, config *Config) *Conveyor {
 	now := time.Now()
-	conv := &Conveyor{
-		Object:    "conveyor",
-		ID:        conveyorID,
-		Created:   now,
-		Changed:   now,
-		Config:    *config,
-		Paused:    false,
-		Scheduler: NewScheduler(conveyorID),
-		Redis:     NewRedisKeys(conveyorID),
-	}
-	return conv
-}
+	var locker sync.Mutex
 
-func NewRedisKeys(conveyorID string) *RedisKeys {
-	key := &RedisKeys{
-		TaskIdKey:             "qdo:" + conveyorID + ":queue:task:next_id",
-		WaitingList:           "qdo:" + conveyorID + ":queue:waitinglist",
-		ProcessingList:        "qdo:" + conveyorID + ":queue:processinglist",
-		StatsTotal:            "qdo:" + conveyorID + ":stat:total",
-		StatsTotalOK:          "qdo:" + conveyorID + ":stat:totalok",
-		StatsTotalRescheduled: "qdo:" + conveyorID + ":stat:rescheduled",
-		StatsTotalError:       "qdo:" + conveyorID + ":stat:totalerror",
-		StatsTotalTime:        "qdo:" + conveyorID + ":stat:totaltime",
-		StatsAvgTimeRecent:    "qdo:" + conveyorID + ":stat:avgtimerecent",
+	conv := &Conveyor{
+		Object:       "conveyor",
+		ID:           conveyorID,
+		Created:      now,
+		Changed:      now,
+		Config:       *config,
+		Paused:       false,
+		Scheduler:    NewScheduler(conveyorID),
+		tasks:        list.New(),
+		newTaskId:    make(chan string),
+		notifyReady:  make(chan int, config.NWorker),
+		notifySignal: make(chan convSignal),
+		cond:         sync.NewCond(&locker),
 	}
-	return key
+
+	// http://blog.cloudflare.com/go-at-cloudflare
+	go func() {
+		h := sha1.New()
+		c := []byte(time.Now().String())
+		for {
+			h.Write(c)
+			conv.newTaskId <- fmt.Sprintf("%x", h.Sum(nil))
+		}
+	}()
+
+	return conv
 }
 
 func (conv *Conveyor) Start() error {
 	log.Infof("starting conveyor \"%s\" with %d worker(s)", conv.ID,
 		conv.Config.NWorker)
 
-	conv.notifyReady = make(chan int, conv.Config.NWorker)
-	conv.notifySignal = make(chan convSignal)
-
-	if conv.Redis == nil {
-		conv.Redis = NewRedisKeys(conv.ID)
-	}
-
 	// Treat existing tasks in processing list as failed. Reschedule to waiting
-	// queue. Also makes sure we have database connection before we go any
-	// further.
+	// queue.
 	err := conv.reset()
 	if err != nil {
 		return err
 	}
 
 	// Start scheduler for delayed or rescheduled tasks.
-	go conv.Scheduler.Start(conv.Redis.WaitingList)
+	go conv.Scheduler.Start()
 
 	for {
 		select {
@@ -204,25 +172,17 @@ func (conv *Conveyor) Start() error {
 
 		// Block until conveyor is ready to process next task.
 		log.Debug("wating on notify ready")
+		log.Debug("waiting on new task")
 		conv.notifyReady <- 1
 
-		// Block until Redis sends next element from list.
-		log.Debug("getting new db connection")
-		c := db.Pool.Get()
-		log.Debug("waiting on new task")
-		b, err := redis.Bytes(c.Do("BRPOPLPUSH", conv.Redis.WaitingList, conv.Redis.ProcessingList, "5"))
-		c.Close()
-		if err != nil {
-			time.Sleep(50 * time.Millisecond)
-			<-conv.notifyReady
-			continue
-		}
+		task := conv.Next()
 
-		go conv.process(b)
+		go conv.process(task)
 
 		// Throttle task invocations per second.
 		if conv.Config.Throttle > 0 {
-			time.Sleep(time.Duration(time.Second / (time.Duration(conv.Config.Throttle) * time.Second)))
+			time.Sleep(time.Duration(
+				time.Second / (time.Duration(conv.Config.Throttle) * time.Second)))
 		}
 	}
 	return nil
@@ -249,34 +209,22 @@ func (conv *Conveyor) Resume() {
 	go func() { conv.notifySignal <- resume }()
 }
 
-func (conv *Conveyor) process(data []byte) {
+func (conv *Conveyor) process(task *Task) {
 	defer func() { <-conv.notifyReady }()
 
 	startTime := time.Now()
 
-	c := db.Pool.Get()
-	defer c.Close()
+	// TODO: increase statsTotal
+	// conv.Stats.IncrTotal()
 
-	c.Do("INCR", conv.Redis.StatsTotal)
-
-	task := &Task{}
-	err := json.Unmarshal(data, task)
-	if err != nil {
-		// Assume invalid task, discard it.
-		log.Error("invalid task format", err)
-		conv.removeProcessing(&c, data, "error")
-		return
-	}
-
-	_, err = url.Parse(task.Target)
+	_, err := url.Parse(task.Target)
 	if err != nil {
 		// Assume invalid task, discard it.
 		log.Error("invalid target URL, discarding task", err)
-		conv.removeProcessing(&c, data, "error")
 		return
 	}
 
-	log.Infof("processing task id: %d target: %s tries: %d",
+	log.Infof("processing task id: %s target: %s tries: %d",
 		task.ID, task.Target, task.Tries)
 
 	transport := http.Transport{
@@ -296,14 +244,13 @@ func (conv *Conveyor) process(data []byte) {
 	}
 
 	if err == nil && resp.StatusCode >= 200 && resp.StatusCode <= 299 {
-		conv.removeProcessing(&c, data, "ok")
 		log.Infof("task completed successfully: %s", resp.Status)
 
 		endTime := time.Now()
-		c.Do("INCRBY", conv.Redis.StatsTotalTime, strconv.Itoa(int(endTime.Sub(startTime))))
+		_ = int(endTime.Sub(startTime))
+		//c.Do("INCRBY", conv.Redis.StatsTotalTime, strconv.Itoa(int(endTime.Sub(startTime))))
 		return
 	} else if err == nil && resp.StatusCode >= 400 && resp.StatusCode <= 499 {
-		conv.removeProcessing(&c, data, "error")
 		log.Infof("task failed, request invalid: %s", resp.Status)
 		return
 	}
@@ -311,235 +258,170 @@ func (conv *Conveyor) process(data []byte) {
 	if conv.Config.TaskMaxTries > 0 && task.Tries >= conv.Config.TaskMaxTries-1 {
 		// Remove from ProcessingList.
 		log.Infof("task reached max tries: %d", task.Tries)
-		conv.removeProcessing(&c, data, "error")
 		return
 	}
 
-	c.Do("INCR", conv.Redis.StatsTotalError)
+	// TODO: increment statsTotalError
+	//conv.Stats.IncrTotalError()
 
-	delay, err := conv.Scheduler.Reschedule(conv.Redis.ProcessingList, task, data)
+	delay, err := conv.Scheduler.Reschedule(task)
 	if err != nil {
 		log.Info("task failed")
 		return
 	}
 
 	log.Infof("task failed, rescheduled for retry in %d seconds", delay)
-	c.Do("INCR", conv.Redis.StatsTotalRescheduled)
+	// TODO: increment StatsTotalRescheduled
+	//conv.Stats.IncrTotalRescheduled()
 }
 
 func (conv *Conveyor) reset() error {
-	for {
-		c := db.Pool.Get()
-		err := c.Err()
-		if err != nil {
-			log.Error("", err)
-			time.Sleep(5 * time.Second)
-		} else {
-			s, err := c.Do("RPOPLPUSH", conv.Redis.ProcessingList, conv.Redis.WaitingList)
-			if err != nil {
-				c.Close()
-				log.Error("", err)
-				return err
-			} else if s == nil {
-				c.Close()
-				// All done, processing is empty.
-				return nil
-			}
-		}
-		c.Close()
-	}
+	// Reload tasks here?
+	return nil
 }
 
 func (conv *Conveyor) Flush() error {
-	if db.Pool == nil {
-		err := errors.New("Database not initialized")
-		log.Error("", err)
-		return err
-	}
-	c := db.Pool.Get()
-	defer c.Close()
-
-	c.Send("MULTI")
-	c.Send("DEL", conv.Redis.WaitingList)
-	c.Send("DEL", conv.Redis.ProcessingList)
-	c.Send("DEL", conv.Scheduler.ScheduleList)
-	_, err := redis.Values(c.Do("EXEC"))
-	return err
+	// Delete queuelogfile
+	return nil
 }
 
-func (conv *Conveyor) AddTask(target, payload string) (*Task, error) {
-	if db.Pool == nil {
-		err := errors.New("Database not initialized")
-		log.Error("", err)
-		return nil, err
-	}
-	c := db.Pool.Get()
-	defer c.Close()
-
-	ID, err := redis.Int(c.Do("INCR", conv.Redis.TaskIdKey))
-	if err != nil {
-		log.Error("", err)
-		return nil, err
-	}
-
+func (conv *Conveyor) Add(target, payload string) *Task {
 	task := &Task{
 		Object:  "task",
-		ID:      ID,
+		ID:      <-conv.newTaskId,
 		Target:  target,
 		Payload: payload,
 		Tries:   0,
 		Delay:   0,
 	}
-	t, err := json.Marshal(task)
-	if err != nil {
-		log.Error("", err)
-		return nil, err
+
+	conv.cond.L.Lock()
+	defer conv.cond.L.Unlock()
+	conv.tasks.PushBack(task)
+	conv.cond.Signal()
+
+	return task
+}
+
+func (conv *Conveyor) Next() *Task {
+	conv.cond.L.Lock()
+start:
+	e := conv.tasks.Front()
+	if e == nil {
+		conv.cond.Wait()
+		goto start
 	}
-	_, err = c.Do("LPUSH", conv.Redis.WaitingList, t)
-	if err != nil {
-		log.Error("", err)
-		return nil, err
-	}
-	return task, nil
+	conv.tasks.Remove(e)
+	conv.cond.L.Unlock()
+	return e.Value.(*Task)
 }
 
 func (conv *Conveyor) Stats() (*Statistic, error) {
-	if db.Pool == nil {
-		err := errors.New("Database not initialized")
-		log.Error("", err)
-		return nil, err
-	}
-	c := db.Pool.Get()
-	defer c.Close()
-
 	stats := &Statistic{
 		Object: "statistic",
 	}
 
-	c.Send("MULTI")
-	c.Send("LLEN", conv.Redis.WaitingList)
-	c.Send("LLEN", conv.Redis.ProcessingList)
-	c.Send("ZCARD", conv.Scheduler.ScheduleList)
-	c.Send("GET", conv.Redis.StatsTotal)
-	c.Send("GET", conv.Redis.StatsTotalOK)
-	c.Send("GET", conv.Redis.StatsTotalRescheduled)
-	c.Send("GET", conv.Redis.StatsTotalError)
-	c.Send("GET", conv.Redis.StatsTotalTime)
-	c.Send("GET", conv.Redis.StatsAvgTimeRecent)
-	reply, err := redis.Values(c.Do("EXEC"))
-	if err != nil {
-		log.Error("", err)
-		return nil, err
-	}
+	/*
+		c.Send("MULTI")
+		c.Send("LLEN", conv.Redis.WaitingList)
+		c.Send("LLEN", conv.Redis.ProcessingList)
+		c.Send("ZCARD", conv.Scheduler.ScheduleList)
+		c.Send("GET", conv.Redis.StatsTotal)
+		c.Send("GET", conv.Redis.StatsTotalOK)
+		c.Send("GET", conv.Redis.StatsTotalRescheduled)
+		c.Send("GET", conv.Redis.StatsTotalError)
+		c.Send("GET", conv.Redis.StatsTotalTime)
+		c.Send("GET", conv.Redis.StatsAvgTimeRecent)
+		reply, err := redis.Values(c.Do("EXEC"))
+		if err != nil {
+			log.Error("", err)
+			return nil, err
+		}
 
-	if reply[0] != nil {
-		stats.InQueue, _ = reply[0].(int64)
-		if err != nil {
-			log.Error("", err)
-			return nil, err
+		if reply[0] != nil {
+			stats.InQueue, _ = reply[0].(int64)
+			if err != nil {
+				log.Error("", err)
+				return nil, err
+			}
 		}
-	}
-	if reply[1] != nil {
-		stats.InProcessing, _ = reply[1].(int64)
-		if err != nil {
-			log.Error("", err)
-			return nil, err
+		if reply[1] != nil {
+			stats.InProcessing, _ = reply[1].(int64)
+			if err != nil {
+				log.Error("", err)
+				return nil, err
+			}
 		}
-	}
-	if reply[2] != nil {
-		stats.InScheduled, _ = reply[2].(int64)
-		if err != nil {
-			log.Error("", err)
-			return nil, err
+		if reply[2] != nil {
+			stats.InScheduled, _ = reply[2].(int64)
+			if err != nil {
+				log.Error("", err)
+				return nil, err
+			}
 		}
-	}
-	if reply[3] != nil {
-		stats.TotalProcessed, err = strconv.Atoi(string(reply[3].([]byte)))
-		if err != nil {
-			log.Error("", err)
-			return nil, err
+		if reply[3] != nil {
+			stats.TotalProcessed, err = strconv.Atoi(string(reply[3].([]byte)))
+			if err != nil {
+				log.Error("", err)
+				return nil, err
+			}
 		}
-	}
-	if reply[4] != nil {
-		stats.TotalProcessedOK, err = strconv.Atoi(string(reply[4].([]byte)))
-		if err != nil {
-			log.Error("", err)
-			return nil, err
+		if reply[4] != nil {
+			stats.TotalProcessedOK, err = strconv.Atoi(string(reply[4].([]byte)))
+			if err != nil {
+				log.Error("", err)
+				return nil, err
+			}
 		}
-	}
-	if reply[5] != nil {
-		stats.TotalProcessedRescheduled, err = strconv.Atoi(string(reply[5].([]byte)))
-		if err != nil {
-			log.Error("", err)
-			return nil, err
+		if reply[5] != nil {
+			stats.TotalProcessedRescheduled, err = strconv.Atoi(string(reply[5].([]byte)))
+			if err != nil {
+				log.Error("", err)
+				return nil, err
+			}
 		}
-	}
-	if reply[6] != nil {
-		stats.TotalProcessedError, err = strconv.Atoi(string(reply[6].([]byte)))
-		if err != nil {
-			log.Error("", err)
-			return nil, err
+		if reply[6] != nil {
+			stats.TotalProcessedError, err = strconv.Atoi(string(reply[6].([]byte)))
+			if err != nil {
+				log.Error("", err)
+				return nil, err
+			}
 		}
-	}
-	if reply[7] != nil {
-		v, err := strconv.Atoi(string(reply[7].([]byte)))
-		if err != nil {
-			log.Error("", err)
-			return nil, err
+		if reply[7] != nil {
+			v, err := strconv.Atoi(string(reply[7].([]byte)))
+			if err != nil {
+				log.Error("", err)
+				return nil, err
+			}
+			stats.AvgTime = time.Duration(int(time.Duration(v)) / stats.TotalProcessedOK)
 		}
-		stats.AvgTime = time.Duration(int(time.Duration(v)) / stats.TotalProcessedOK)
-	}
-	if reply[8] != nil {
-		v, err := strconv.Atoi(string(reply[8].([]byte)))
-		if err != nil {
-			log.Error("", err)
-			return nil, err
-		}
-		stats.AvgTimeRecent = time.Duration(v)
-	}
+		if reply[8] != nil {
+			v, err := strconv.Atoi(string(reply[8].([]byte)))
+			if err != nil {
+				log.Error("", err)
+				return nil, err
+			}
+			stats.AvgTimeRecent = time.Duration(v)
+		}*/
 
 	return stats, nil
 }
 
-func (conv *Conveyor) removeProcessing(c *redis.Conn, data []byte, status string) error {
-	_, err := redis.Int((*c).Do("LREM", conv.Redis.ProcessingList, "1", data))
-	if err != nil {
-		log.Error("", err)
-		return err
-	}
+func (conv *Conveyor) Tasks() []*Task {
+	conv.cond.L.Lock()
+	defer conv.cond.L.Unlock()
 
-	switch status {
-	case "ok":
-		(*c).Do("INCR", conv.Redis.StatsTotalOK)
-	case "error":
-		(*c).Do("INCR", conv.Redis.StatsTotalError)
-	}
+	limit := 100
 
-	return nil
-}
-
-func (conv *Conveyor) Tasks() ([]Task, error) {
-	if db.Pool == nil {
-		return nil, errors.New("Database not initialized")
-	}
-	c := db.Pool.Get()
-	defer c.Close()
-
-	reply, err := redis.Values(c.Do("LRANGE", conv.Redis.WaitingList, "0", "-1"))
-	if err != nil {
-		log.Error("", err)
-		return nil, err
-	}
-
-	// Make a new slice of equal length as result. Type assert to []byte and
-	// JSON decode into slice element.
-	resp := make([]Task, len(reply))
-	for i, v := range reply {
-		err = json.Unmarshal(v.([]byte), &resp[i])
-		if err != nil {
-			log.Error("", err)
-			return nil, err
+	res := make([]*Task, 0, limit)
+	i := 0
+	for e := conv.tasks.Front(); e != nil; e = e.Next() {
+		fmt.Println(e.Value)
+		res = append(res, e.Value.(*Task))
+		i++
+		if i >= limit {
+			break
 		}
 	}
-	return resp, nil
+	return res
 }
