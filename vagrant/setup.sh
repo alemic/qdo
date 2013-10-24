@@ -16,20 +16,7 @@ TIMEZONE=$(head -n 1 "/etc/timezone")
 echo "Europe/Oslo" | tee /etc/timezone
 dpkg-reconfigure --frontend noninteractive tzdata
 
-
 apt-get install -q -y python-software-properties git
-
-# Docker
-sh -c "curl http://get.docker.io/gpg | apt-key add -"
-sh -c "echo deb https://get.docker.io/ubuntu docker main > /etc/apt/sources.list.d/docker.list"
-apt-get update -q
-apt-get install -q -y linux-image-extra-`uname -r` lxc-docker
-
-echo "limit nofile 262144 262144" >> /etc/init/docker.conf
-sed -i.bak 's/docker -d/docker -d -r/' /etc/init/docker.conf
-service docker restart
-sleep 3
-
 
 # Go development environment
 add-apt-repository -y ppa:duh/golang
