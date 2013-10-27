@@ -26,8 +26,8 @@ type dbCorruptHarness struct {
 func newDbCorruptHarness(t *testing.T) *dbCorruptHarness {
 	h := new(dbCorruptHarness)
 	h.init(t, &opt.Options{
-		Flag:       opt.OFCreateIfMissing,
 		BlockCache: cache.NewLRUCache(100),
+		Strict:     opt.StrictJournalChecksum,
 	})
 	return h
 }

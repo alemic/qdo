@@ -10,7 +10,7 @@ import (
 	"bytes"
 	"testing"
 
-	"github.com/syndtr/goleveldb/leveldb/comparer"
+	"github.com/borgenk/qdo/third_party/github.com/syndtr/goleveldb/leveldb/comparer"
 )
 
 var icmp = &iComparer{comparer.DefaultComparer}

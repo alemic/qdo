@@ -8,7 +8,7 @@ package filter
 
 import (
 	"encoding/binary"
-	"github.com/syndtr/goleveldb/leveldb/util"
+	"github.com/borgenk/qdo/third_party/github.com/syndtr/goleveldb/leveldb/util"
 	"testing"
 )
 

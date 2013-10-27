@@ -34,6 +34,8 @@ type block struct {
 	data           []byte
 	restartsLen    int
 	restartsOffset int
+	// Whether checksum is verified and valid.
+	checksum bool
 }
 
 func (b *block) seek(key []byte) (offset int, err error) {
@@ -391,8 +393,8 @@ type indexIter struct {
 	blockIter
 	tableReader *Reader
 	// Options
-	verifyChecksums bool
-	fillCache       bool
+	checksum  bool
+	fillCache bool
 }
 
 func (i *indexIter) Get() iterator.Iterator {
@@ -404,7 +406,7 @@ func (i *indexIter) Get() iterator.Iterator {
 	if n == 0 {
 		return iterator.NewEmptyIterator(errors.New("leveldb/table: Reader: invalid table (bad data block handle)"))
 	}
-	iter := i.tableReader.getDataIter(dataBH, i.verifyChecksums, i.fillCache)
+	iter := i.tableReader.getDataIter(dataBH, i.checksum, i.fillCache)
 	return iter
 }
 
@@ -414,25 +416,31 @@ type Reader struct {
 	cache  cache.Namespace
 	err    error
 	// Options
-	cmp    comparer.Comparer
-	filter filter.Filter
-	strict bool
+	cmp        comparer.Comparer
+	filter     filter.Filter
+	checksum   bool
+	strictIter bool
 
 	dataEnd     int64
 	indexBlock  *block
 	filterBlock *filterBlock
 }
 
-func (r *Reader) readRawBlock(bh blockHandle, verifyChecksums bool) ([]byte, error) {
+func verifyChecksum(data []byte) bool {
+	n := len(data) - 4
+	checksum0 := binary.LittleEndian.Uint32(data[n:])
+	checksum1 := util.NewCRC(data[:n]).Value()
+	return checksum0 == checksum1
+}
+
+func (r *Reader) readRawBlock(bh blockHandle, checksum bool) ([]byte, error) {
 	data := make([]byte, bh.length+blockTrailerLen)
 	if _, err := r.reader.ReadAt(data, int64(bh.offset)); err != nil && err != io.EOF {
 		return nil, err
 	}
-	if verifyChecksums || r.strict {
-		checksum0 := binary.LittleEndian.Uint32(data[bh.length+1:])
-		checksum1 := util.NewCRC(data[:bh.length+1]).Value()
-		if checksum0 != checksum1 {
-			return nil, errors.New("leveldb/table: Reader: invalid table (block checksum mismatch)")
+	if checksum || r.checksum {
+		if !verifyChecksum(data) {
+			return nil, errors.New("leveldb/table: Reader: invalid block (checksum mismatch)")
 		}
 	}
 	switch data[bh.length] {
@@ -450,8 +458,8 @@ func (r *Reader) readRawBlock(bh blockHandle, verifyChecksums bool) ([]byte, err
 	return data, nil
 }
 
-func (r *Reader) readBlock(bh blockHandle, verifyChecksums bool) (*block, error) {
-	data, err := r.readRawBlock(bh, verifyChecksums)
+func (r *Reader) readBlock(bh blockHandle, checksum bool) (*block, error) {
+	data, err := r.readRawBlock(bh, checksum)
 	if err != nil {
 		return nil, err
 	}
@@ -461,6 +469,7 @@ func (r *Reader) readBlock(bh blockHandle, verifyChecksums bool) (*block, error)
 		data:           data,
 		restartsLen:    restartsLen,
 		restartsOffset: len(data) - (restartsLen+1)*4,
+		checksum:       checksum || r.checksum,
 	}
 	return b, nil
 }
@@ -489,7 +498,7 @@ func (r *Reader) readFilterBlock(bh blockHandle, filter filter.Filter) (*filterB
 	return b, nil
 }
 
-func (r *Reader) getDataIter(dataBH blockHandle, verifyChecksums, fillCache bool) iterator.Iterator {
+func (r *Reader) getDataIter(dataBH blockHandle, checksum, fillCache bool) iterator.Iterator {
 	if r.cache != nil {
 		// Get/set block cache.
 		var err error
@@ -498,7 +507,7 @@ func (r *Reader) getDataIter(dataBH blockHandle, verifyChecksums, fillCache bool
 				return
 			}
 			var dataBlock *block
-			dataBlock, err = r.readBlock(dataBH, verifyChecksums)
+			dataBlock, err = r.readBlock(dataBH, checksum)
 			if err == nil {
 				ok = true
 				value = dataBlock
@@ -510,11 +519,18 @@ func (r *Reader) getDataIter(dataBH blockHandle, verifyChecksums, fillCache bool
 			return iterator.NewEmptyIterator(err)
 		}
 		if ok {
-			iter := cache.Value().(*block).newIterator(cache)
+			dataBlock := cache.Value().(*block)
+			if !dataBlock.checksum && (r.checksum || checksum) {
+				if !verifyChecksum(dataBlock.data) {
+					return iterator.NewEmptyIterator(errors.New("leveldb/table: Reader: invalid block (checksum mismatch)"))
+				}
+				dataBlock.checksum = true
+			}
+			iter := dataBlock.newIterator(cache)
 			return iter
 		}
 	}
-	dataBlock, err := r.readBlock(dataBH, verifyChecksums)
+	dataBlock, err := r.readBlock(dataBH, checksum)
 	if err != nil {
 		return iterator.NewEmptyIterator(err)
 	}
@@ -528,18 +544,18 @@ func (r *Reader) getDataIter(dataBH blockHandle, verifyChecksums, fillCache bool
 // when not used.
 //
 // Also read Iterator documentation of the leveldb/iterator package.
-func (r *Reader) NewIterator(ro opt.ReadOptionsGetter) iterator.Iterator {
+func (r *Reader) NewIterator(ro *opt.ReadOptions) iterator.Iterator {
 	if r.err != nil {
 		return iterator.NewEmptyIterator(r.err)
 	}
 
 	index := &indexIter{
-		blockIter:       *r.indexBlock.newIterator(nil),
-		tableReader:     r,
-		verifyChecksums: ro.HasFlag(opt.RFVerifyChecksums),
-		fillCache:       !ro.HasFlag(opt.RFDontFillCache),
+		blockIter:   *r.indexBlock.newIterator(nil),
+		tableReader: r,
+		checksum:    ro.GetStrict(opt.StrictBlockChecksum),
+		fillCache:   !ro.GetDontFillCache(),
 	}
-	return iterator.NewIndexedIterator(index, r.strict)
+	return iterator.NewIndexedIterator(index, r.strictIter || ro.GetStrict(opt.StrictIterator))
 }
 
 // Find finds key/value pair whose key is greater than or equal to the
@@ -548,7 +564,7 @@ func (r *Reader) NewIterator(ro opt.ReadOptionsGetter) iterator.Iterator {
 //
 // The caller should not modify the contents of the returned slice, but
 // it is safe to modify the contents of the argument after Find returns.
-func (r *Reader) Find(key []byte, ro opt.ReadOptionsGetter) (rkey, value []byte, err error) {
+func (r *Reader) Find(key []byte, ro *opt.ReadOptions) (rkey, value []byte, err error) {
 	if r.err != nil {
 		err = r.err
 		return
@@ -572,7 +588,7 @@ func (r *Reader) Find(key []byte, ro opt.ReadOptionsGetter) (rkey, value []byte,
 		err = ErrNotFound
 		return
 	}
-	data := r.getDataIter(dataBH, ro.HasFlag(opt.RFVerifyChecksums), !ro.HasFlag(opt.RFDontFillCache))
+	data := r.getDataIter(dataBH, ro.GetStrict(opt.StrictBlockChecksum), !ro.GetDontFillCache())
 	defer data.Release()
 	if !data.Seek(key) {
 		err = data.Error()
@@ -591,7 +607,7 @@ func (r *Reader) Find(key []byte, ro opt.ReadOptionsGetter) (rkey, value []byte,
 //
 // The caller should not modify the contents of the returned slice, but
 // it is safe to modify the contents of the argument after Get returns.
-func (r *Reader) Get(key []byte, ro opt.ReadOptionsGetter) (value []byte, err error) {
+func (r *Reader) Get(key []byte, ro *opt.ReadOptions) (value []byte, err error) {
 	if r.err != nil {
 		err = r.err
 		return
@@ -634,12 +650,13 @@ func (r *Reader) GetApproximateOffset(key []byte) (offset int64, err error) {
 
 // NewReader creates a new initialized table reader for the file.
 // The cache is optional and can be nil.
-func NewReader(f io.ReaderAt, size int64, cache cache.Namespace, o opt.OptionsGetter) *Reader {
+func NewReader(f io.ReaderAt, size int64, cache cache.Namespace, o *opt.Options) *Reader {
 	r := &Reader{
-		reader: f,
-		cache:  cache,
-		cmp:    o.GetComparer(),
-		strict: o.HasFlag(opt.OFStrict),
+		reader:     f,
+		cache:      cache,
+		cmp:        o.GetComparer(),
+		checksum:   o.GetStrict(opt.StrictBlockChecksum),
+		strictIter: o.GetStrict(opt.StrictIterator),
 	}
 	if f == nil {
 		r.err = errors.New("leveldb/table: Reader: nil file")
@@ -688,7 +705,19 @@ func NewReader(f io.ReaderAt, size int64, cache cache.Namespace, o opt.OptionsGe
 		if !strings.HasPrefix(key, "filter.") {
 			continue
 		}
-		if filter := o.GetAltFilter(key[7:]); filter != nil {
+		fn := key[7:]
+		var filter filter.Filter
+		if f0 := o.GetFilter(); f0 != nil && f0.Name() == fn {
+			filter = f0
+		} else {
+			for _, f0 := range o.GetAltFilters() {
+				if f0.Name() == fn {
+					filter = f0
+					break
+				}
+			}
+		}
+		if filter != nil {
 			filterBH, n := decodeBlockHandle(metaIter.Value())
 			if n == 0 {
 				continue

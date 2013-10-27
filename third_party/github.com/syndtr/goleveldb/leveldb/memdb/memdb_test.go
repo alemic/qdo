@@ -11,7 +11,7 @@ import (
 	"math/rand"
 	"testing"
 
-	"github.com/syndtr/goleveldb/leveldb/comparer"
+	"github.com/borgenk/qdo/third_party/github.com/syndtr/goleveldb/leveldb/comparer"
 )
 
 func TestPutDelete(t *testing.T) {
