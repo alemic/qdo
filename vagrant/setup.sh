@@ -16,7 +16,7 @@ echo "Europe/Oslo" | tee /etc/timezone
 dpkg-reconfigure --frontend noninteractive tzdata
 
 apt-get update -q -y
-apt-get install -q -y python-software-properties git
+apt-get install -q -y python-software-properties git curl
 
 # Go development environment
 add-apt-repository -y ppa:duh/golang
