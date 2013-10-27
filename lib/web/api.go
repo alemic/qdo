@@ -176,7 +176,11 @@ func getAllTasks(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	res := conv.Tasks()
+	res, err := conv.Tasks()
+	if err != nil {
+		http.Error(w, "could not fetch tasks", http.StatusInternalServerError)
+		return
+	}
 	ReturnJSON(w, r, JSONListResult("/api/conveyor/"+id+"/task", len(res), res))
 }
 
@@ -194,7 +198,11 @@ func createTask(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "conveyor id does not exsist", http.StatusBadRequest)
 		return
 	}
-	res := conveyor.Add(r.FormValue("target"), r.FormValue("payload"))
+	res, err := conveyor.Add(r.FormValue("target"), r.FormValue("payload"))
+	if err != nil {
+		http.Error(w, "could not add task to database", http.StatusInternalServerError)
+		return
+	}
 	ReturnJSON(w, r, res)
 }
 

@@ -7,10 +7,8 @@ import (
 	"os"
 	"os/signal"
 	"syscall"
-	"time"
 
 	"github.com/borgenk/qdo/third_party/github.com/syndtr/goleveldb/leveldb"
-	"github.com/borgenk/qdo/third_party/github.com/syndtr/goleveldb/leveldb/opt"
 
 	"github.com/borgenk/qdo/lib/log"
 )
@@ -22,6 +20,7 @@ type Manager struct {
 var (
 	manager *Manager
 	db      *leveldb.DB
+	err     error
 )
 
 func StartManager() error {
@@ -32,35 +31,20 @@ func StartManager() error {
 }
 
 func (man *Manager) start() error {
-	// TEST.....................................................................
-	var err error
-	db, err = leveldb.OpenFile("/tmp/my.db", &opt.Options{Flag: opt.OFCreateIfMissing})
+	dbFile := "/tmp/my.db"
+
+	db, err = leveldb.OpenFile(dbFile, nil)
 	if err != nil {
-		// TODO: Log
+		log.Error(fmt.Sprintf("open database file %s failed", dbFile), err)
 		return err
 	}
 	defer db.Close()
 
-	ro := &opt.ReadOptions{}
-	wo := &opt.WriteOptions{}
-
-	for i := 0; i < 100; i++ {
-		key := fmt.Sprintf("%012d-%d", time.Now().Unix(), i)
-		_ = db.Put([]byte(key), []byte("12345"), wo)
-	}
-
-	_ = db.Put([]byte("ab"), []byte("12345"), wo)
-	_ = db.Put([]byte("ac"), []byte("12345"), wo)
-
-	iter := db.NewIterator(ro)
-	for iter.Seek([]byte("ab")); iter.Valid(); iter.Next() {
-		key := iter.Key()
-		value := iter.Value()
-		fmt.Printf("%s - %s\n", key, value)
+	iter := db.NewIterator(nil)
+	for iter.Seek(nil); iter.Valid(); iter.Next() {
+		db.Delete(iter.Key(), nil)
 	}
 	iter.Release()
-	_ = iter.Error()
-	// TEST END.................................................................
 
 	// TODO: Read conveyors from file here.
 	storedConveyors := make(map[string]string)

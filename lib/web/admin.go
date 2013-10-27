@@ -87,7 +87,7 @@ func viewConveyor(w http.ResponseWriter, r *http.Request) {
 	}
 	convRes.Stats = stats
 
-	convRes.Tasks = conv.Tasks()
+	convRes.Tasks = make([]*queue.Task, 0)
 
 	h := Header{
 		Title: fmt.Sprintf("Conveyor %s | QDo", conv.ID),
