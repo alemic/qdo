@@ -305,25 +305,35 @@ func (conv *Conveyor) Resume() {
 	go func() { conv.notifySignal <- resume }()
 }
 
-func (conv *Conveyor) Add(target, payload string) (*Task, error) {
+func (conv *Conveyor) Add(target, payload string, scheduled, recurring int64) (*Task, error) {
 	task := &Task{
-		Object:  "task",
-		ID:      <-conv.newTaskId,
-		Target:  target,
-		Payload: payload,
-		Tries:   0,
-		Delay:   0,
+		Object:    "task",
+		ID:        <-conv.newTaskId,
+		Target:    target,
+		Payload:   payload,
+		Tries:     0,
+		Delay:     0,
+		Recurring: 0,
 	}
 
-	b, err := GobEncode(task)
+	t, err := GobEncode(task)
 	if err != nil {
 		log.Error("unable to encode task", err)
 		return nil, err
 	}
 
-	err = conv.add(task.ID, b)
-	if err != nil {
-		return nil, err
+	if scheduled > 0 {
+		// Delayed task.
+		err = conv.scheduler.Add(task.ID, t, scheduled)
+		if err != nil {
+			return nil, err
+		}
+	} else {
+		// Normal task.
+		err = conv.add(task.ID, t)
+		if err != nil {
+			return nil, err
+		}
 	}
 
 	return task, nil

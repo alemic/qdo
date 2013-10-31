@@ -52,11 +52,11 @@ func (sched *Scheduler) Start() {
 		// oldest (lowest) possible item.
 		stop := append(sched.Conveyor.waitKeyStart, []byte(fmt.Sprintf("%d", time.Now().Unix()))...)
 		iter := db.NewIterator(nil)
-		for iter.Seek(sched.Conveyor.waitKeyStart); iter.Valid(); iter.Next() { // start := []byte("w\x00")
+		for iter.Seek(sched.Conveyor.waitKeyStart); iter.Valid(); iter.Next() {
 			k := iter.Key()
 			v := iter.Value()
 
-			if comparer.DefaultComparer.Compare(k, stop) > 0 { // []byte(fmt.Sprintf("w\x00%d", now))
+			if comparer.DefaultComparer.Compare(k, stop) > 0 {
 				// This might be a task is sechduled in the future or some other
 				// stored value. All scheduled tasks up until right now is read.
 				break
@@ -77,14 +77,6 @@ func (sched *Scheduler) Start() {
 	}
 }
 
-func (sched *Scheduler) Stop() {
-
-}
-
-func (sched *Scheduler) Add() {
-
-}
-
 // Reschedule task.
 func (sched *Scheduler) Reschedule(task *Task) (int32, error) {
 	if task.Delay == 0 {
@@ -100,15 +92,19 @@ func (sched *Scheduler) Reschedule(task *Task) (int32, error) {
 	}
 
 	retryAt := time.Now().Unix() + int64(task.Delay)
+	err = sched.Add(task.ID, t, retryAt)
 
+	return task.Delay, err
+}
+
+func (sched *Scheduler) Add(taskId string, task []byte, time int64) error {
 	// Key format: [conv id] \x00 [key type] \x00 [timestamp] \x00 [task id]
 	key := append(sched.Conveyor.waitKeyStart,
-		[]byte(fmt.Sprintf("%d%s%s", retryAt, startPoint, task.ID))...)
-	err = db.Put(key, t, nil)
+		[]byte(fmt.Sprintf("%d%s%s", time, startPoint, taskId))...)
+	err = db.Put(key, task, nil)
 	if err != nil {
 		log.Error("add task to db failed", err)
-		return 0, err
+		return err
 	}
-
-	return task.Delay, nil
+	return nil
 }

@@ -28,6 +28,20 @@ Create task
        -d target=http://127.0.0.1/mytask \
        -d "payload={'foo': 'bar'}"
 
+Create scheduled task
+----------------------
+    curl http://127.0.0.1:8080/api/conveyor/foo/task \
+       -d target=http://127.0.0.1/mytask \
+       -d scheduled=1399999999 \
+       -d "payload={'foo': 'bar'}"
+
+Create recurring task
+----------------------
+    curl http://127.0.0.1:8080/api/conveyor/foo/task \
+       -d target=http://127.0.0.1/mytask \
+       -d recurring=60 \
+       -d "payload={'foo': 'bar'}"
+
 Delete all tasks
 ----------------------
     curl -X DELETE http://127.0.0.1:8080/api/conveyor/foo/task
