@@ -1,7 +1,6 @@
 package queue
 
 import (
-	"encoding/json"
 	"errors"
 	"fmt"
 	"os"
@@ -9,6 +8,7 @@ import (
 	"syscall"
 
 	"github.com/borgenk/qdo/third_party/github.com/syndtr/goleveldb/leveldb"
+	"github.com/borgenk/qdo/third_party/github.com/syndtr/goleveldb/leveldb/comparer"
 
 	"github.com/borgenk/qdo/lib/log"
 )
@@ -40,30 +40,15 @@ func (man *Manager) start() error {
 	}
 	defer db.Close()
 
-	iter := db.NewIterator(nil)
-	for iter.Seek(nil); iter.Valid(); iter.Next() {
-		db.Delete(iter.Key(), nil)
+	storedConveyors, err := getAllStoredConveyors()
+	if err != nil {
+		log.Error("", err)
+		return err
 	}
-	iter.Release()
-
-	// TODO: Read conveyors from file here.
-	storedConveyors := make(map[string]string)
-
-	key := ""
 	for _, v := range storedConveyors {
-		if key == "" {
-			key = v
-		} else {
-			man.Conveyors[key] = &Conveyor{}
-			err := json.Unmarshal([]byte(v), man.Conveyors[key])
-			if err != nil {
-				log.Error("", err)
-				return err
-			}
-			go man.Conveyors[key].Start()
+		man.Conveyors[v.ID] = v
+		go man.Conveyors[v.ID].Init().Start()
 
-			key = ""
-		}
 	}
 
 	exit := make(chan os.Signal, 1)
@@ -86,48 +71,100 @@ func GetConveyor(conveyorID string) (*Conveyor, error) {
 	return conv, nil
 }
 
-func GetAllConveyor() []*Conveyor {
+func getAllStoredConveyors() ([]*Conveyor, error) {
+	res := make([]*Conveyor, 0, 1000)
+
+	start := []byte("c\x00")
+	iter := db.NewIterator(nil)
+	for iter.Seek(start); iter.Valid(); iter.Next() {
+		k := iter.Key()
+		v := iter.Value()
+
+		if comparer.DefaultComparer.Compare(k, []byte("c\xff")) > 0 {
+			break
+		}
+
+		c := &Conveyor{}
+		err := GobDecode(v, c)
+		if err != nil {
+			panic("for now")
+		}
+
+		res = append(res, c)
+	}
+	iter.Release()
+
+	return res, nil
+}
+
+func GetAllConveyor() ([]*Conveyor, error) {
+	// TODO: Implement locking.
 	if manager == nil {
-		return nil
+		return nil, errors.New("Manager not initialized")
 	}
 
-	resp := make([]*Conveyor, 0, len(manager.Conveyors))
+	res := make([]*Conveyor, 0, len(manager.Conveyors))
 	for _, v := range manager.Conveyors {
-		resp = append(resp, v)
+		res = append(res, v)
 	}
-	return resp
+	return res, nil
 }
 
 func AddConveyor(conveyorID string, config *Config) error {
 	// TODO: Implement locking.
-	manager.Conveyors[conveyorID] = NewConveyor(conveyorID, config)
-	go manager.Conveyors[conveyorID].Start()
+	if manager == nil {
+		return errors.New("Manager not initialized")
+	}
 
-	_, err := json.Marshal(manager.Conveyors[conveyorID])
-	// b
+	conv := NewConveyor(conveyorID, config)
+	manager.Conveyors[conveyorID] = conv
+
+	b, err := GobEncode(conv)
 	if err != nil {
 		log.Error("", err)
 		return err
 	}
 
-	// TODO: Sync conveyor to file here.
-	// conveyorID, b
+	err = db.Put(conveyorKey(conveyorID), b, nil)
+	if err != nil {
+		log.Error("", err)
+		return err
+	}
+
+	go func() {
+		manager.Conveyors[conveyorID].Start()
+	}()
+
 	return nil
 }
 
-func RemoveConveyor(conveyorID string) error {
+// RemoveConveyor stops and removes the conveyor. The conveyor will wait on
+// running tasks to complete before shutting down.
+func RemoveConveyor(conveyorId string) error {
+	// TODO: Implement locking.
 	if manager == nil {
 		return errors.New("Manager not initialized")
 	}
 
-	conv, ok := manager.Conveyors[conveyorID]
+	// Check if conveyor exist.
+	_, ok := manager.Conveyors[conveyorId]
 	if !ok {
 		return errors.New("Conveyor does not exist")
 	}
 
-	// TODO Sync conveyor to file here.
+	err := db.Delete(conveyorKey(conveyorId), nil)
+	if err != nil {
+		return err
+	}
 
-	go conv.Stop()
+	go func() {
+		manager.Conveyors[conveyorId].Stop()
+		delete(manager.Conveyors, conveyorId)
+	}()
 
 	return nil
+}
+
+func conveyorKey(conveyorId string) []byte {
+	return []byte(fmt.Sprintf("c\x00%s", conveyorId))
 }

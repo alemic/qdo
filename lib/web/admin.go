@@ -30,7 +30,11 @@ type ConveyorRowResult struct {
 
 func viewAllConveyors(w http.ResponseWriter, r *http.Request) {
 	res := make([]*ConveyorRowResult, 0)
-	convs := queue.GetAllConveyor()
+	convs, err := queue.GetAllConveyor()
+	if err != nil {
+		http.Error(w, "", http.StatusInternalServerError)
+		return
+	}
 	for _, v := range convs {
 		conv := &ConveyorRowResult{
 			ID:              v.ID,

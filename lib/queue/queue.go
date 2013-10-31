@@ -3,7 +3,6 @@ package queue
 import (
 	"bytes"
 	"crypto/sha1"
-	"encoding/gob"
 	"fmt"
 	"net"
 	"net/http"
@@ -17,6 +16,13 @@ import (
 	"github.com/borgenk/qdo/lib/log"
 )
 
+const (
+	queueKey   string = "q"
+	waitKey    string = "w"
+	startPoint string = "\x00"
+	stopPoint  string = "\xff"
+)
+
 type convSignal int
 
 const (
@@ -27,54 +33,29 @@ const (
 )
 
 type Conveyor struct {
-	// Define resource.
-	Object string `json:"object"`
-
-	// Conveyor identification.
-	ID string `json:"id"`
-
-	// Conveyor created timestamp.
-	Created time.Time `json:"created"`
-
-	// Conveyor changed timestamp.
-	Changed time.Time `json:"changed"`
-
-	// Conveyor is in pause state.
-	Paused bool `json:"paused"`
-
-	// Conveyor configurations.
-	Config Config `json:"config"`
-
-	// Scheduler.
-	Scheduler *Scheduler `json:"scheduler"`
-
-	// Generate new task id by reading from channel.
-	newTaskId chan string `json:"-"`
-
-	// Limit number of simultaneous workers processing tasks.
-	notifyReady chan int `json:"-"`
-
-	// Conveyor status signal.
-	notifySignal chan convSignal `json:"-"`
-
-	cond *sync.Cond
+	Object        string          `json:"object"`  // Define resource.
+	ID            string          `json:"id"`      // Conveyor identification.
+	Created       time.Time       `json:"created"` // Conveyor created timestamp.
+	Changed       time.Time       `json:"changed"` // Conveyor changed timestamp.
+	Paused        bool            `json:"paused"`  // Conveyor is in pause state.
+	Config        Config          `json:"config"`  // Conveyor configurations.
+	scheduler     *Scheduler      `json:"-"`       // Scheduler.
+	newTaskId     chan string     `json:"-"`       // Generate new task id by reading from channel.
+	notifyReady   chan int        `json:"-"`       // Limit number of simultaneous workers processing tasks.
+	notifySignal  chan convSignal `json:"-"`       // Conveyor status signal.
+	cond          *sync.Cond      `json:"-"`
+	queueKeyStart []byte          `json:"-"`
+	queueKeyStop  []byte          `json:"-"`
+	waitKeyStart  []byte          `json:"-"`
+	waitKeyStop   []byte          `json:"-"`
 }
 
 type Config struct {
-	// Number of simultaneous workers processing tasks.
-	NWorker int32 `json:"n_worker"`
-
-	// Number of maxium task invocations from queue per second.
-	Throttle int32 `json:"throttle"`
-
-	// Duration allowed per task to complete in seconds.
-	TaskTLimit int32 `json:"task_t_limit"`
-
-	// Number of tries per task before giving up. Set 0 for unlimited retries.
-	TaskMaxTries int32 `json:"task_max_tries"`
-
-	// Number of max log entries.
-	LogSize int32 `json:"log_size"`
+	NWorker      int32 `json:"n_worker"`       // Number of simultaneous workers processing tasks.
+	Throttle     int32 `json:"throttle"`       // Number of maxium task invocations from queue per second.
+	TaskTLimit   int32 `json:"task_t_limit"`   // Duration allowed per task to complete in seconds.
+	TaskMaxTries int32 `json:"task_max_tries"` // Number of tries per task before giving up. Set 0 for unlimited retries.
+	LogSize      int32 `json:"log_size"`       // Number of max log entries.
 }
 
 type Statistic struct {
@@ -91,53 +72,42 @@ type Statistic struct {
 }
 
 type Task struct {
-	Object  string `json:"object"`
-	ID      string `json:"id"`
-	Target  string `json:"target"`
-	Payload string `json:"payload"`
-	Tries   int32  `json:"tries"`
-	Delay   int32  `json:"delay"`
-}
-
-func GobEncode(t *Task) ([]byte, error) {
-	w := new(bytes.Buffer)
-	encoder := gob.NewEncoder(w)
-	err := encoder.Encode(t)
-	if err != nil {
-		return nil, err
-	}
-	return w.Bytes(), nil
-}
-
-func GobDecode(buf []byte) (*Task, error) {
-	r := bytes.NewBuffer(buf)
-	decoder := gob.NewDecoder(r)
-	t := &Task{}
-	err := decoder.Decode(t)
-	if err != nil {
-		return nil, err
-	}
-	return t, nil
+	Object    string `json:"object"`
+	ID        string `json:"id"`
+	Target    string `json:"target"`
+	Payload   string `json:"payload"`
+	Tries     int32  `json:"tries"`
+	Delay     int32  `json:"delay"`
+	Recurring int32  `json:"recurring"`
 }
 
 func NewConveyor(conveyorID string, config *Config) *Conveyor {
 	now := time.Now()
-	var locker sync.Mutex
-
 	conv := &Conveyor{
-		Object:       "conveyor",
-		ID:           conveyorID,
-		Created:      now,
-		Changed:      now,
-		Config:       *config,
-		Paused:       false,
-		newTaskId:    make(chan string),
-		notifyReady:  make(chan int, config.NWorker),
-		notifySignal: make(chan convSignal),
-		cond:         sync.NewCond(&locker),
+		Object:  "conveyor",
+		ID:      conveyorID,
+		Created: now,
+		Changed: now,
+		Config:  *config,
+		Paused:  false,
 	}
+	conv.Init()
+	return conv
+}
 
-	conv.Scheduler = NewScheduler(conv)
+func (conv *Conveyor) Init() *Conveyor {
+	conv.newTaskId = make(chan string)
+	conv.notifyReady = make(chan int, conv.Config.NWorker)
+	conv.notifySignal = make(chan convSignal)
+	conv.scheduler = NewScheduler(conv)
+
+	conv.queueKeyStart = []byte(conv.ID + startPoint + queueKey + startPoint)
+	conv.queueKeyStop = []byte(conv.ID + startPoint + queueKey + startPoint)
+	conv.waitKeyStart = []byte(conv.ID + startPoint + waitKey + startPoint)
+	conv.waitKeyStop = []byte(conv.ID + startPoint + waitKey + startPoint)
+
+	var locker sync.Mutex
+	conv.cond = sync.NewCond(&locker)
 
 	// http://blog.cloudflare.com/go-at-cloudflare
 	go func() {
@@ -165,7 +135,7 @@ func (conv *Conveyor) Start() error {
 	}
 
 	// Start scheduler for delayed or rescheduled tasks.
-	go conv.Scheduler.Start()
+	go conv.scheduler.Start()
 
 	for {
 		select {
@@ -210,10 +180,10 @@ func (conv *Conveyor) next() *Task {
 
 start:
 	iter := db.NewIterator(nil)
-	iter.Seek([]byte("q\x00"))
+	iter.Seek(conv.queueKeyStart)
 
 	k := iter.Key()
-	if iter.Valid() == false || comparer.DefaultComparer.Compare(k, []byte("q\xff")) > 0 {
+	if iter.Valid() == false || comparer.DefaultComparer.Compare(k, conv.queueKeyStop) > 0 {
 		iter.Release()
 		conv.cond.Wait()
 		goto start
@@ -225,7 +195,8 @@ start:
 		log.Error(fmt.Sprintf("error occur while trying to delete key %s from db", k), err)
 		panic("for now")
 	}
-	t, err := GobDecode(v)
+	t := &Task{}
+	err = GobDecode(v, t)
 	if err != nil {
 		log.Error("unable to decode task from db", err)
 		panic("for now")
@@ -292,7 +263,7 @@ func (conv *Conveyor) process(task *Task) {
 	// TODO: increment statsTotalError
 	//conv.Stats.IncrTotalError()
 
-	delay, err := conv.Scheduler.Reschedule(task)
+	delay, err := conv.scheduler.Reschedule(task)
 	if err != nil {
 		log.Info("task failed")
 		return
@@ -362,8 +333,9 @@ func (conv *Conveyor) add(taskId string, task []byte) error {
 	conv.cond.L.Lock()
 	defer conv.cond.L.Unlock()
 
-	// Key format: q\x00[timestamp]\x00[taskid]
-	key := fmt.Sprintf("q\x00%d\x00%s", time.Now().Unix(), taskId)
+	// Key format: [convid]\x00q\x00[timestamp]\x00[taskid]
+	//key := fmt.Sprintf("q\x00%d\x00%s", conv.ID, keyStart, keyQueue, keyStart, time.Now().Unix(), keyStart, taskId)
+	key := append(conv.queueKeyStart, []byte(fmt.Sprintf("%d%s%s", time.Now().Unix(), startPoint, taskId))...)
 	wo := &opt.WriteOptions{}
 	err = db.Put([]byte(key), task, wo)
 	if err != nil {
@@ -389,17 +361,18 @@ func (conv *Conveyor) Tasks() ([]*Task, error) {
 	limit := 100
 	res := make([]*Task, 0, limit)
 
-	start := []byte("q\x00")
+	//start := []byte("q\x00")
 	iter := db.NewIterator(nil)
-	for iter.Seek(start); iter.Valid(); iter.Next() {
+	for iter.Seek(conv.queueKeyStart); iter.Valid(); iter.Next() {
 		k := iter.Key()
 		v := iter.Value()
 
-		if comparer.DefaultComparer.Compare(k, []byte("q\xff")) > 0 {
+		if comparer.DefaultComparer.Compare(k, conv.queueKeyStop) > 0 {
 			break
 		}
 
-		t, err := GobDecode(v)
+		t := &Task{}
+		err := GobDecode(v, t)
 		if err != nil {
 			log.Error("", err)
 			iter.Release()

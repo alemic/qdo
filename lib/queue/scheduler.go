@@ -49,25 +49,22 @@ func (sched *Scheduler) Start() {
 		default:
 		}
 
-		// Fetch all tasks scheduled earlier then right now.
-		now := time.Now().Unix()
-
-		// Start with the oldest (lowest) possible item.
-		start := []byte("w\x00")
-		ro := &opt.ReadOptions{}
-		iter := db.NewIterator(ro)
-		for iter.Seek(start); iter.Valid(); iter.Next() {
+		// Fetch all tasks scheduled earlier then right now, starting with the
+		// oldest (lowest) possible item.
+		stop := append(sched.Conveyor.waitKeyStart, []byte(string(time.Now().Unix()))...)
+		iter := db.NewIterator(nil)
+		for iter.Seek(sched.Conveyor.waitKeyStart); iter.Valid(); iter.Next() { // start := []byte("w\x00")
 			k := iter.Key()
 			v := iter.Value()
 
-			if comparer.DefaultComparer.Compare(k, []byte(fmt.Sprintf("w\x00%d", now))) > 0 {
+			if comparer.DefaultComparer.Compare(k, stop) > 0 { // []byte(fmt.Sprintf("w\x00%d", now))
 				// This might be a task is sechduled in the future or some other
 				// stored value. All scheduled tasks up until right now is read.
 				break
 			}
 
 			// Parse out task id in order to avoid decode/encode gob.
-			i := bytes.LastIndex(k, []byte("\x00"))
+			i := bytes.LastIndex(k, []byte(startPoint))
 			taskId := string(k[i:len(k)])
 			log.Infof("placing scheduled task %s into queue", taskId)
 
@@ -105,10 +102,12 @@ func (sched *Scheduler) Reschedule(task *Task) (int32, error) {
 
 	retryAt := time.Now().Unix() + int64(task.Delay)
 
-	// Key format: q\x00[timestamp]\x00[taskid]
+	// Key format: [convid]\x00q\x00[timestamp]\x00[taskid]
 	key := fmt.Sprintf("w\x00%d\x00%s", retryAt, task.ID)
-	wo := &opt.WriteOptions{}
-	err = db.Put([]byte(key), t, wo)
+
+	// sched.conv.waitKeyStart
+
+	err = db.Put([]byte(key), t, nil)
 	if err != nil {
 		log.Error("add task to db failed", err)
 		return 0, err
