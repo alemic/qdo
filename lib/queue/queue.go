@@ -102,9 +102,9 @@ func (conv *Conveyor) Init() *Conveyor {
 	conv.scheduler = NewScheduler(conv)
 
 	conv.queueKeyStart = []byte(conv.ID + startPoint + queueKey + startPoint)
-	conv.queueKeyStop = []byte(conv.ID + startPoint + queueKey + startPoint)
+	conv.queueKeyStop = []byte(conv.ID + startPoint + queueKey + stopPoint)
 	conv.waitKeyStart = []byte(conv.ID + startPoint + waitKey + startPoint)
-	conv.waitKeyStop = []byte(conv.ID + startPoint + waitKey + startPoint)
+	conv.waitKeyStop = []byte(conv.ID + startPoint + waitKey + stopPoint)
 
 	var locker sync.Mutex
 	conv.cond = sync.NewCond(&locker)
@@ -333,9 +333,11 @@ func (conv *Conveyor) add(taskId string, task []byte) error {
 	conv.cond.L.Lock()
 	defer conv.cond.L.Unlock()
 
-	// Key format: [convid]\x00q\x00[timestamp]\x00[taskid]
-	//key := fmt.Sprintf("q\x00%d\x00%s", conv.ID, keyStart, keyQueue, keyStart, time.Now().Unix(), keyStart, taskId)
-	key := append(conv.queueKeyStart, []byte(fmt.Sprintf("%d%s%s", time.Now().Unix(), startPoint, taskId))...)
+	// Key format: [conv id] \x00 [key type] \x00 [timestamp] \x00 [task id]
+	key := append(conv.queueKeyStart,
+		[]byte(fmt.Sprintf("%d%s%s", time.Now().Unix(), startPoint, taskId))...)
+	log.Infof("new task %s added to conveyor %s", taskId, conv.ID)
+
 	wo := &opt.WriteOptions{}
 	err = db.Put([]byte(key), task, wo)
 	if err != nil {
@@ -361,7 +363,6 @@ func (conv *Conveyor) Tasks() ([]*Task, error) {
 	limit := 100
 	res := make([]*Task, 0, limit)
 
-	//start := []byte("q\x00")
 	iter := db.NewIterator(nil)
 	for iter.Seek(conv.queueKeyStart); iter.Valid(); iter.Next() {
 		k := iter.Key()

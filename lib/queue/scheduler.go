@@ -6,7 +6,6 @@ import (
 	"time"
 
 	"github.com/borgenk/qdo/third_party/github.com/syndtr/goleveldb/leveldb/comparer"
-	"github.com/borgenk/qdo/third_party/github.com/syndtr/goleveldb/leveldb/opt"
 
 	"github.com/borgenk/qdo/lib/log"
 )
@@ -31,7 +30,7 @@ type Scheduler struct {
 func NewScheduler(conveyor *Conveyor) *Scheduler {
 	scheduler := &Scheduler{
 		Conveyor: conveyor,
-		Rate:     5 * time.Second,
+		Rate:     1 * time.Second,
 	}
 	return scheduler
 }
@@ -51,7 +50,7 @@ func (sched *Scheduler) Start() {
 
 		// Fetch all tasks scheduled earlier then right now, starting with the
 		// oldest (lowest) possible item.
-		stop := append(sched.Conveyor.waitKeyStart, []byte(string(time.Now().Unix()))...)
+		stop := append(sched.Conveyor.waitKeyStart, []byte(fmt.Sprintf("%d", time.Now().Unix()))...)
 		iter := db.NewIterator(nil)
 		for iter.Seek(sched.Conveyor.waitKeyStart); iter.Valid(); iter.Next() { // start := []byte("w\x00")
 			k := iter.Key()
@@ -69,7 +68,7 @@ func (sched *Scheduler) Start() {
 			log.Infof("placing scheduled task %s into queue", taskId)
 
 			// TODO: Batch add / removal of task.
-			sched.Conveyor.add("", v)
+			sched.Conveyor.add(taskId, v)
 			db.Delete(k, nil)
 		}
 		iter.Release()
@@ -102,12 +101,10 @@ func (sched *Scheduler) Reschedule(task *Task) (int32, error) {
 
 	retryAt := time.Now().Unix() + int64(task.Delay)
 
-	// Key format: [convid]\x00q\x00[timestamp]\x00[taskid]
-	key := fmt.Sprintf("w\x00%d\x00%s", retryAt, task.ID)
-
-	// sched.conv.waitKeyStart
-
-	err = db.Put([]byte(key), t, nil)
+	// Key format: [conv id] \x00 [key type] \x00 [timestamp] \x00 [task id]
+	key := append(sched.Conveyor.waitKeyStart,
+		[]byte(fmt.Sprintf("%d%s%s", retryAt, startPoint, task.ID))...)
+	err = db.Put(key, t, nil)
 	if err != nil {
 		log.Error("add task to db failed", err)
 		return 0, err
