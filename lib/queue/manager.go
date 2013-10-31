@@ -23,19 +23,17 @@ var (
 	err     error
 )
 
-func StartManager() error {
+func StartManager(dbFilepath string) error {
 	manager = &Manager{
 		Conveyors: make(map[string]*Conveyor),
 	}
-	return manager.start()
+	return manager.start(dbFilepath)
 }
 
-func (man *Manager) start() error {
-	dbFile := "/tmp/my.db"
-
-	db, err = leveldb.OpenFile(dbFile, nil)
+func (man *Manager) start(dbFilepath string) error {
+	db, err = leveldb.OpenFile(dbFilepath, nil)
 	if err != nil {
-		log.Error(fmt.Sprintf("open database file %s failed", dbFile), err)
+		log.Error(fmt.Sprintf("open database file %s failed", dbFilepath), err)
 		return err
 	}
 	defer db.Close()
