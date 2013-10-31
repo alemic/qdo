@@ -1,6 +1,6 @@
 QDo
 ======================
-A Redis queue implementation written in Golang.
+A LevelDB queue implementation written in Golang.
 
 
 Create conveyor
