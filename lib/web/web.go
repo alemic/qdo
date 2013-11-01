@@ -6,7 +6,6 @@ import (
 	"html/template"
 	"net/http"
 	"os"
-	//"time"
 
 	"github.com/borgenk/qdo/third_party/github.com/gorilla/mux"
 

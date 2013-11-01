@@ -211,17 +211,9 @@ func createTask(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
-	recurring := 0
-	if r.FormValue("recurring") != "" {
-		recurring, err = strconv.Atoi(r.FormValue("recurring"))
-		if err != nil || recurring < 0 {
-			http.Error(w, "value for recurring is invalid", http.StatusBadRequest)
-			return
-		}
-	}
 
 	res, err := conveyor.Add(r.FormValue("target"), r.FormValue("payload"),
-		int64(scheduled), int64(recurring))
+		int64(scheduled))
 	if err != nil {
 		http.Error(w, "could not add task to database", http.StatusInternalServerError)
 		return

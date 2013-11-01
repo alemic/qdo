@@ -72,13 +72,12 @@ type Statistic struct {
 }
 
 type Task struct {
-	Object    string `json:"object"`
-	ID        string `json:"id"`
-	Target    string `json:"target"`
-	Payload   string `json:"payload"`
-	Tries     int32  `json:"tries"`
-	Delay     int32  `json:"delay"`
-	Recurring int32  `json:"recurring"`
+	Object  string `json:"object"`
+	ID      string `json:"id"`
+	Target  string `json:"target"`
+	Payload string `json:"payload"`
+	Tries   int32  `json:"tries"`
+	Delay   int32  `json:"delay"`
 }
 
 func NewConveyor(conveyorID string, config *Config) *Conveyor {
@@ -305,15 +304,14 @@ func (conv *Conveyor) Resume() {
 	go func() { conv.notifySignal <- resume }()
 }
 
-func (conv *Conveyor) Add(target, payload string, scheduled, recurring int64) (*Task, error) {
+func (conv *Conveyor) Add(target, payload string, scheduled int64) (*Task, error) {
 	task := &Task{
-		Object:    "task",
-		ID:        <-conv.newTaskId,
-		Target:    target,
-		Payload:   payload,
-		Tries:     0,
-		Delay:     0,
-		Recurring: 0,
+		Object:  "task",
+		ID:      <-conv.newTaskId,
+		Target:  target,
+		Payload: payload,
+		Tries:   0,
+		Delay:   0,
 	}
 
 	t, err := GobEncode(task)
