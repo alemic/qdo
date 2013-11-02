@@ -7,8 +7,8 @@ import (
 
 	"github.com/borgenk/qdo/third_party/github.com/gorilla/mux"
 
-	"github.com/borgenk/qdo/lib/log"
-	"github.com/borgenk/qdo/lib/queue"
+	"github.com/borgenk/qdo/log"
+	"github.com/borgenk/qdo/queue"
 )
 
 type jsonListResult struct {

@@ -7,7 +7,7 @@ import (
 
 	"github.com/borgenk/qdo/third_party/github.com/syndtr/goleveldb/leveldb/comparer"
 
-	"github.com/borgenk/qdo/lib/log"
+	"github.com/borgenk/qdo/log"
 )
 
 type Scheduler struct {

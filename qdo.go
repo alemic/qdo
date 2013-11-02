@@ -3,9 +3,9 @@ package main
 import (
 	"flag"
 
-	"github.com/borgenk/qdo/lib/log"
-	"github.com/borgenk/qdo/lib/queue"
-	"github.com/borgenk/qdo/lib/web"
+	"github.com/borgenk/qdo/log"
+	"github.com/borgenk/qdo/queue"
+	"github.com/borgenk/qdo/web"
 )
 
 const Version = "0.2.1"

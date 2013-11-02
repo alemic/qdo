@@ -6,7 +6,7 @@ import (
 
 	"github.com/borgenk/qdo/third_party/github.com/gorilla/mux"
 
-	"github.com/borgenk/qdo/lib/queue"
+	"github.com/borgenk/qdo/queue"
 )
 
 type Header struct {

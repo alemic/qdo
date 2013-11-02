@@ -9,7 +9,7 @@ import (
 
 	"github.com/borgenk/qdo/third_party/github.com/gorilla/mux"
 
-	"github.com/borgenk/qdo/lib/log"
+	"github.com/borgenk/qdo/log"
 )
 
 var templateList = []string{
