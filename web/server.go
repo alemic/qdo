@@ -14,6 +14,7 @@ import (
 
 var templateList = []string{
 	"layout.html",
+	"top.html",
 	"view_conveyor_list.html",
 	"create_conveyor.html",
 	"view_conveyor.html",
@@ -42,11 +43,11 @@ func renderTemplate(w http.ResponseWriter, tmpl string, p interface{}) {
 func Run(port int, documentRoot string) {
 	for k, v := range templateList {
 		validateFilepath(documentRoot + "template/" + v)
-		if k == 0 {
+		if k == 0 || k == 1 {
 			continue
 		}
 		registerTemplate(v, template.Must(template.ParseFiles(
-			documentRoot+"template/"+v, documentRoot+"template/layout.html")))
+			documentRoot+"template/"+v, documentRoot+"template/layout.html", documentRoot+"template/top.html")))
 	}
 
 	r := mux.NewRouter()
@@ -67,8 +68,9 @@ func Run(port int, documentRoot string) {
 	r.HandleFunc("/api/conveyor/{conveyor_id}/task", deleteAllTasks).Methods("DELETE")
 	r.HandleFunc("/api/conveyor/{conveyor_id}/stats", getStats).Methods("GET")
 
+	//TODO: Use http.FileServer
 	r.PathPrefix("/static/").Handler(
-		http.StripPrefix("/static/", http.FileServer(http.Dir(documentRoot+"static/"))))
+		http.StripPrefix("/static/", FileServer(http.Dir(documentRoot+"static/"))))
 
 	http.Handle("/", r)
 	http.ListenAndServe(fmt.Sprintf(":%d", port), nil)

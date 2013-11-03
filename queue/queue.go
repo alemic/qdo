@@ -7,7 +7,9 @@ import (
 	"net"
 	"net/http"
 	"net/url"
+	"strconv"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/borgenk/qdo/third_party/github.com/syndtr/goleveldb/leveldb/comparer"
@@ -39,10 +41,11 @@ type Conveyor struct {
 	Changed       time.Time       `json:"changed"` // Conveyor changed timestamp.
 	Paused        bool            `json:"paused"`  // Conveyor is in pause state.
 	Config        Config          `json:"config"`  // Conveyor configurations.
-	scheduler     *Scheduler      `json:"-"`       // Scheduler.
-	newTaskId     chan string     `json:"-"`       // Generate new task id by reading from channel.
-	notifyReady   chan int        `json:"-"`       // Limit number of simultaneous workers processing tasks.
-	notifySignal  chan convSignal `json:"-"`       // Conveyor status signal.
+	Stats         *Statistic      `json:"-"`
+	scheduler     *Scheduler      `json:"-"` // Scheduler.
+	newTaskId     chan string     `json:"-"` // Generate new task id by reading from channel.
+	notifyReady   chan int        `json:"-"` // Limit number of simultaneous workers processing tasks.
+	notifySignal  chan convSignal `json:"-"` // Conveyor status signal.
 	cond          *sync.Cond      `json:"-"`
 	queueKeyStart []byte          `json:"-"`
 	queueKeyStop  []byte          `json:"-"`
@@ -58,17 +61,34 @@ type Config struct {
 	LogSize      int32 `json:"log_size"`       // Number of max log entries.
 }
 
+type AtomicInt int64
+
+func (i *AtomicInt) Add(n int64) {
+	atomic.AddInt64((*int64)(i), n)
+}
+
+func (i *AtomicInt) Set(n int64) {
+	atomic.StoreInt64((*int64)(i), n)
+}
+
+func (i *AtomicInt) Get() int64 {
+	return atomic.LoadInt64((*int64)(i))
+}
+
+func (i *AtomicInt) String() string {
+	return strconv.FormatInt(i.Get(), 10)
+}
+
 type Statistic struct {
-	Object                    string        `json:"object"`
-	InQueue                   int64         `json:"in_queue"`
-	InProcessing              int64         `json:"in_processing"`
-	InScheduled               int64         `json:"in_scheduled"`
-	TotalProcessed            int           `json:"total_processed"`
-	TotalProcessedOK          int           `json:"total_processed_ok"`
-	TotalProcessedError       int           `json:"total_processed_error"`
-	TotalProcessedRescheduled int           `json:"total_processed_rescheduled"`
-	AvgTime                   time.Duration `json:"avg_time"`
-	AvgTimeRecent             time.Duration `json:"avg_time_recent"`
+	InQueue                   AtomicInt
+	InProcessing              AtomicInt
+	InScheduled               AtomicInt
+	TotalProcessed            AtomicInt
+	TotalProcessedOK          AtomicInt
+	TotalProcessedError       AtomicInt
+	TotalProcessedRescheduled AtomicInt
+	TotalTime                 AtomicInt
+	TimeLastOK                AtomicInt
 }
 
 type Task struct {
@@ -100,6 +120,7 @@ func (conv *Conveyor) Init() *Conveyor {
 	conv.notifySignal = make(chan convSignal)
 	conv.scheduler = NewScheduler(conv)
 
+	conv.Stats = &Statistic{}
 	conv.queueKeyStart = []byte(conv.ID + startPoint + queueKey + startPoint)
 	conv.queueKeyStop = []byte(conv.ID + startPoint + queueKey + stopPoint)
 	conv.waitKeyStart = []byte(conv.ID + startPoint + waitKey + startPoint)
@@ -211,9 +232,7 @@ func (conv *Conveyor) process(task *Task) {
 	defer func() { <-conv.notifyReady }()
 
 	startTime := time.Now()
-
-	// TODO: increase statsTotal
-	// conv.Stats.IncrTotal()
+	conv.Stats.TotalProcessed.Add(1)
 
 	_, err := url.Parse(task.Target)
 	if err != nil {
@@ -243,24 +262,25 @@ func (conv *Conveyor) process(task *Task) {
 
 	if err == nil && resp.StatusCode >= 200 && resp.StatusCode <= 299 {
 		log.Infof("task completed successfully: %s", resp.Status)
-
-		endTime := time.Now()
-		_ = int(endTime.Sub(startTime))
-		//c.Do("INCRBY", conv.Redis.StatsTotalTime, strconv.Itoa(int(endTime.Sub(startTime))))
+		conv.Stats.TotalProcessedOK.Add(1)
+		timeSpent := int64(time.Now().Sub(startTime))
+		conv.Stats.TotalTime.Add(timeSpent)
+		conv.Stats.TimeLastOK.Set(timeSpent)
 		return
 	} else if err == nil && resp.StatusCode >= 400 && resp.StatusCode <= 499 {
 		log.Infof("task failed, request invalid: %s", resp.Status)
+		conv.Stats.TotalProcessedError.Add(1)
 		return
 	}
 
 	if conv.Config.TaskMaxTries > 0 && task.Tries >= conv.Config.TaskMaxTries-1 {
 		// Remove from ProcessingList.
 		log.Infof("task reached max tries: %d", task.Tries)
+		conv.Stats.TotalProcessedError.Add(1)
 		return
 	}
 
-	// TODO: increment statsTotalError
-	//conv.Stats.IncrTotalError()
+	conv.Stats.TotalProcessedError.Add(1)
 
 	delay, err := conv.scheduler.Reschedule(task)
 	if err != nil {
@@ -269,8 +289,8 @@ func (conv *Conveyor) process(task *Task) {
 	}
 
 	log.Infof("task failed, rescheduled for retry in %d seconds", delay)
-	// TODO: increment StatsTotalRescheduled
-	//conv.Stats.IncrTotalRescheduled()
+	conv.Stats.TotalProcessedRescheduled.Add(1)
+
 }
 
 func (conv *Conveyor) reset() error {
@@ -357,13 +377,6 @@ func (conv *Conveyor) add(taskId string, task []byte) error {
 	conv.cond.Signal()
 
 	return nil
-}
-
-func (conv *Conveyor) Stats() (*Statistic, error) {
-	stats := &Statistic{
-		Object: "statistic",
-	}
-	return stats, nil
 }
 
 func (conv *Conveyor) Tasks() ([]*Task, error) {

@@ -13,17 +13,15 @@
   <header></header>
   <nav>
     <div class="top">
-      <h2>
-        <a href="http://github.com/borgenk/qdo"><span class="icon-factory"></span> QDo</a>
-        <span class="version">v0.1</span>
-      </h2>
-      <ul class="site-nav">
-        <li><a href="/"><span class="icon-home"></a></li>
-      </ul>
+      <a href="http://github.com/borgenk/qdo">QDo</a>
     </div>
+    <ul class="site-nav">
+      <li><a href="/" class="active"><span class="icon-home"></span>Overview</a></li>
+    </ul>
     <div class="bottom"></div>
   </nav>
   <main>
+    {{template "top" .}}
     {{template "main" .}}
   </main>
   <footer></footer>

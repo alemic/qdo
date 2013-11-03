@@ -3,9 +3,14 @@ body {
   background-color: #FFFFFF;
   font-family: "Helvetica Neue",Helvetica,Arial,sans-serif;
 }
+h1 {
+  font-size: 1.6rem;
+  margin: 0;
+  margin-bottom: 0.8rem;
+}
 h2 {
   font-size: 18px;
-  font-weight: normal;
+  font-weight: bold;
   color: #999999;
   margin: 0 0 10px 0;
 }
@@ -20,7 +25,7 @@ nav {
   left: 0;
   bottom: 0;
   background-color: #252827;
-  width: 60px;
+  width: 130px;
   padding: 18px;
   color: #a7abb1;
   overflow: hidden;
@@ -29,49 +34,61 @@ nav .top,
 nav .bottom {
   position: absolute;
   left: 0;
-  width: 60px;
+  width: 130px;
   padding: 18px;
 }
 nav .top {
   top: 0;
   height: 60px;
-  background-color: #28C190;
 }
 nav .bottom {
   bottom: 0;
   height: 40px;
 }
 nav .top a {
+  font-size: 28px;
+  font-weight: bold;
+  margin: 0 0 10px 0;
+  text-align: center;
   color: #000000;
   text-decoration: none;
   opacity: 0.4;
-}
-nav .top .version {
-  color: #000000;
-  font-size: 12px;
-  opacity: 0.4;
-  margin-left: 18px;
+  display: block;
 }
 .site-nav {
-  margin-top: 50px;
-  font-size: 30px;
+  margin-top: 80px;
   padding-left: 14px;
   padding-right: 14px;
 }
+.site-nav a {
+  font-size: 16px;
+  color: #8A8A8A;
+  text-decoration: none;
+}
+.site-nav a.active {
+  color: #FFFFFF;
+}
+.site-nav a > span {
+  margin-right: 4px;
+}
 main {
-  margin-left: 106px;
+  margin-left: 166px;
   overflow-y: auto;
   position: absolute;
   top: 0;
   bottom: 0;
   left: 0;
   right: 0;
+  background-color: #F0F0F0;
 }
 main .top {
-  height: 60px;
-  padding: 18px;
+  margin-left: 18px;
+  height: 24px;
+  padding: 10px;
+  background-color: #FFFFFF;
+  display: none;
 }
-main .top .title a {
+main .title a {
   color: #D3D3D3;
   text-decoration: none;
 }
@@ -99,7 +116,7 @@ table a {
 
 .conveyor-nav {
   overflow: hidden;
-  margin-bottom: 30px;
+  margin-bottom: 12px;
 }
 .conveyor-nav>li {
   float: left;
@@ -108,8 +125,8 @@ table a {
 .conveyor-nav>li>a {
   display: block;
   padding: 5px 10px;
-  background-color: #4B4B4B;
-  color: #E4E4E4;
+  background-color: #E6E6E6;
+  color: #888888;
   text-decoration: none;
   font-size: 12px;
 }
@@ -140,7 +157,7 @@ table a {
   float: left;
   height: 250px;
   min-width: 300px;
-  margin-right: 40px;
+  margin-right: 18px;
   background-color: #FAFAFA;
   padding: 10px 20px;
 }

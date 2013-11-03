@@ -47,11 +47,12 @@ func viewAllConveyors(w http.ResponseWriter, r *http.Request) {
 		if v.Paused {
 			conv.Status = "Paused"
 		}
-		stats, err := v.Stats()
-		if err == nil {
-			conv.TasksWaiting = stats.InQueue
-			conv.TasksProcessing = stats.InProcessing
-		}
+		/*
+			stats, err := v.Stats()
+			if err == nil {
+				conv.TasksWaiting = stats.InQueue
+				conv.TasksProcessing = stats.InProcessing
+			}*/
 		res = append(res, conv)
 	}
 
@@ -68,7 +69,7 @@ func viewAllConveyors(w http.ResponseWriter, r *http.Request) {
 
 type ConveyorResult struct {
 	Conv  *queue.Conveyor
-	Stats *queue.Statistic
+	Stats *StatsResponse
 	Tasks []*queue.Task
 }
 
@@ -85,12 +86,9 @@ func viewConveyor(w http.ResponseWriter, r *http.Request) {
 	convRes := &ConveyorResult{
 		Conv: conv,
 	}
-	stats, err := conv.Stats()
-	if err != nil {
-		return
-	}
-	convRes.Stats = stats
 
+	convRes.Stats = &StatsResponse{}
+	convRes.Stats.Get(conv)
 	convRes.Tasks = make([]*queue.Task, 0)
 
 	h := Header{

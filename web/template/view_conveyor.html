@@ -1,8 +1,6 @@
 {{define "main"}}
-<div class="top">
-  <h1 class="title"><a href="/conveyors/{{.Result.Conv.ID}}">Conveyor: {{.Result.Conv.ID}}</a></h1>
-</div>
 <div class="content">
+  <h1 class="title"><a href="/conveyors/{{.Result.Conv.ID}}">Conveyor: {{.Result.Conv.ID}}</a></h1>
   <ul class="conveyor-nav">
     <li><a href="/conveyors/{{.Result.Conv.ID}}">View</a></li>
     <li><a href="/conveyors/{{.Result.Conv.ID}}/log">Log</a></li>
@@ -18,8 +16,6 @@
       <dl><dt>Total tasks ok:</dt><dd>{{.Result.Stats.TotalProcessedOK}}</dd></dl>
       <dl><dt>Total tasks rescheduled:</dt><dd>{{.Result.Stats.TotalProcessedRescheduled}}</dd></dl>
       <dl><dt>Total tasks error:</dt><dd>{{.Result.Stats.TotalProcessedError}}</dd></dl>
-      <dl><dt>Average task time:</dt><dd>{{.Result.Stats.AvgTime}}</dd></dl>
-      <dl><dt>Average task time recent:</dt><dd>{{.Result.Stats.AvgTimeRecent}}</dd></dl>
     </div>
     <div class="config">
       <h2>Config</h2>
@@ -29,31 +25,6 @@
       <dl><dt>Task timeout:</dt><dd>{{.Result.Conv.Config.TaskTLimit}}<span class="unit">s</span></dd></dl>
       <dl><dt>Log size:</dt><dd>{{.Result.Conv.Config.LogSize}}</dd></dl>
     </div>
-  </div>
-  <div class="tasks">
-    <h2>Tasks</h2>
-    <table>
-      <thead>
-        <tr>
-          <th>ID</th>
-          <th>Target</th>
-          <th>Tries</th>
-          <th>Delay</th>
-          <th>Payload</th>
-        </tr>
-      </thead>
-      <tbody>
-        {{range .Result.Tasks}}
-        <tr>
-          <td>{{.ID}}</td>
-          <td>{{.Target}}</td>
-          <td>{{.Tries}}</td>
-          <td>{{.Delay}}s</td>
-          <td>{{.Payload}}</td>
-        </tr>
-        {{end}}
-      </tbody>
-    </table>
   </div>
 </div>
 {{end}}

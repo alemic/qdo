@@ -40,4 +40,6 @@ Delete all tasks
     curl -X DELETE http://127.0.0.1:8080/api/conveyor/foo/task
 
 
-
+Get conveyor stats
+----------------------
+    curl http://127.0.0.1:8080/api/conveyor/foo/stats

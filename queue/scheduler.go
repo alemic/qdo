@@ -11,20 +11,11 @@ import (
 )
 
 type Scheduler struct {
-	// Conveyor.
-	Conveyor *Conveyor `json:"-"`
-
-	// Conveyor status signal.
-	notifySignal chan convSignal `json:"-"`
-
-	// Conveyor scheduler id name.
-	ScheduleId string `json:"schedule_id"`
-
-	// Conveyor scheduler list name.
-	ScheduleList string `json:"schedule_list"`
-
-	// How often scheduler checks schedule list in seconds.
-	Rate time.Duration `json:"rate"`
+	Conveyor     *Conveyor       `json:"-"`             // Conveyor.
+	notifySignal chan convSignal `json:"-"`             // Conveyor status signal.
+	ScheduleId   string          `json:"schedule_id"`   // Conveyor scheduler id name.
+	ScheduleList string          `json:"schedule_list"` // Conveyor scheduler list name.
+	Rate         time.Duration   `json:"rate"`          // How often scheduler checks schedule list in seconds.
 }
 
 func NewScheduler(conveyor *Conveyor) *Scheduler {

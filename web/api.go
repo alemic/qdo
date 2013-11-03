@@ -243,6 +243,32 @@ func deleteAllTasks(w http.ResponseWriter, r *http.Request) {
 	ReturnJSON(w, r, nil)
 }
 
+type StatsResponse struct {
+	Object                    string `json:"object"`
+	InQueue                   int64  `json:"in_queue"`
+	InProcessing              int64  `json:"in_processing"`
+	InScheduled               int64  `json:"in_scheduled"`
+	TotalProcessed            int64  `json:"total_processed"`
+	TotalProcessedOK          int64  `json:"total_processed_ok"`
+	TotalProcessedError       int64  `json:"total_processed_error"`
+	TotalProcessedRescheduled int64  `json:"total_processed_rescheduled"`
+	TotalTime                 int64  `json:"total_time"`
+	TimeLastOK                int64  `json:"time_last_ok"`
+}
+
+func (s *StatsResponse) Get(conveyor *queue.Conveyor) {
+	s.Object = "statistic"
+	s.InQueue = conveyor.Stats.InQueue.Get()
+	s.InProcessing = conveyor.Stats.InProcessing.Get()
+	s.InScheduled = conveyor.Stats.InScheduled.Get()
+	s.TotalProcessed = conveyor.Stats.TotalProcessed.Get()
+	s.TotalProcessedOK = conveyor.Stats.TotalProcessedOK.Get()
+	s.TotalProcessedError = conveyor.Stats.TotalProcessedError.Get()
+	s.TotalProcessedRescheduled = conveyor.Stats.TotalProcessedRescheduled.Get()
+	s.TotalTime = conveyor.Stats.TotalTime.Get()
+	s.TimeLastOK = conveyor.Stats.TimeLastOK.Get()
+}
+
 // API handler for GET /api/conveyor/{conveyor_id}/stats
 func getStats(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
@@ -258,10 +284,7 @@ func getStats(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	res, err := conveyor.Stats()
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return
-	}
-	ReturnJSON(w, r, res)
+	statsResp := &StatsResponse{}
+	statsResp.Get(conveyor)
+	ReturnJSON(w, r, statsResp)
 }
