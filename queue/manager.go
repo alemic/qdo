@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"os/signal"
+	"sync"
 	"syscall"
 
 	"github.com/borgenk/qdo/third_party/github.com/syndtr/goleveldb/leveldb"
@@ -20,9 +21,11 @@ type Manager struct {
 var (
 	manager *Manager
 	db      *leveldb.DB
+	mu      sync.Mutex
 	err     error
 )
 
+// StartManager starts the conveyor state manager.
 func StartManager(dbFilepath string) error {
 	manager = &Manager{
 		Conveyors: make(map[string]*Conveyor),
@@ -56,25 +59,11 @@ func (man *Manager) start(dbFilepath string) error {
 	return nil
 }
 
-func GetConveyor(conveyorID string) (*Conveyor, error) {
-	if manager == nil {
-		return nil, errors.New("Manager not initialized")
-	}
-
-	conv, ok := manager.Conveyors[conveyorID]
-	if !ok {
-		return nil, nil
-	}
-
-	return conv, nil
-}
-
 func getAllStoredConveyors() ([]*Conveyor, error) {
 	res := make([]*Conveyor, 0, 1000)
-
-	start := []byte("c\x00")
 	iter := db.NewIterator(nil)
-	for iter.Seek(start); iter.Valid(); iter.Next() {
+	defer iter.Release()
+	for iter.Seek([]byte("c\x00")); iter.Valid(); iter.Next() {
 		k := iter.Key()
 		v := iter.Value()
 
@@ -90,13 +79,30 @@ func getAllStoredConveyors() ([]*Conveyor, error) {
 
 		res = append(res, c)
 	}
-	iter.Release()
-
 	return res, nil
 }
 
-func GetAllConveyor() ([]*Conveyor, error) {
-	// TODO: Implement locking.
+// GetConveyor returns a container for a given id if it exist.
+func GetConveyor(conveyorID string) (*Conveyor, error) {
+	mu.Lock()
+	defer mu.Unlock()
+
+	if manager == nil {
+		return nil, errors.New("Manager not initialized")
+	}
+
+	conv, ok := manager.Conveyors[conveyorID]
+	if !ok {
+		return nil, errors.New("Conveyor not found")
+	}
+	return conv, nil
+}
+
+// GetALlConveyors returns all conveyors.
+func GetAllConveyors() ([]*Conveyor, error) {
+	mu.Lock()
+	defer mu.Unlock()
+
 	if manager == nil {
 		return nil, errors.New("Manager not initialized")
 	}
@@ -108,8 +114,12 @@ func GetAllConveyor() ([]*Conveyor, error) {
 	return res, nil
 }
 
+// AddConveyor adds a new container with a given id and config setup.
+// Conveyor will automatically start.
 func AddConveyor(conveyorID string, config *Config) error {
-	// TODO: Implement locking.
+	mu.Lock()
+	defer mu.Unlock()
+
 	if manager == nil {
 		return errors.New("Manager not initialized")
 	}
@@ -122,7 +132,6 @@ func AddConveyor(conveyorID string, config *Config) error {
 		log.Error("", err)
 		return err
 	}
-
 	err = db.Put(conveyorKey(conveyorID), b, nil)
 	if err != nil {
 		log.Error("", err)
@@ -132,14 +141,15 @@ func AddConveyor(conveyorID string, config *Config) error {
 	go func() {
 		manager.Conveyors[conveyorID].Start()
 	}()
-
 	return nil
 }
 
 // RemoveConveyor stops and removes the conveyor. The conveyor will wait on
 // running tasks to complete before shutting down.
 func RemoveConveyor(conveyorId string) error {
-	// TODO: Implement locking.
+	mu.Lock()
+	defer mu.Unlock()
+
 	if manager == nil {
 		return errors.New("Manager not initialized")
 	}
@@ -158,8 +168,8 @@ func RemoveConveyor(conveyorId string) error {
 	go func() {
 		manager.Conveyors[conveyorId].Stop()
 		delete(manager.Conveyors, conveyorId)
+		// TODO: Clean up tasks.
 	}()
-
 	return nil
 }
 

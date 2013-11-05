@@ -51,7 +51,7 @@ func ReturnJSON(w http.ResponseWriter, r *http.Request, resp interface{}) {
 
 // API handler for GET /api/conveyor.
 func getAllConveyor(w http.ResponseWriter, r *http.Request) {
-	res, err := queue.GetAllConveyor()
+	res, err := queue.GetAllConveyors()
 	if err != nil {
 		log.Error("", err)
 		http.Error(w, "", http.StatusInternalServerError)
