@@ -41,7 +41,7 @@ type Conveyor struct {
 	Changed       time.Time       `json:"changed"` // Conveyor changed timestamp.
 	Paused        bool            `json:"paused"`  // Conveyor is in pause state.
 	Config        Config          `json:"config"`  // Conveyor configurations.
-	Stats         *Statistic      `json:"-"`
+	Stats         *Stats          `json:"-"`
 	scheduler     *Scheduler      `json:"-"` // Scheduler.
 	newTaskId     chan string     `json:"-"` // Generate new task id by reading from channel.
 	notifyReady   chan int        `json:"-"` // Limit number of simultaneous workers processing tasks.
@@ -79,7 +79,7 @@ func (i *AtomicInt) String() string {
 	return strconv.FormatInt(i.Get(), 10)
 }
 
-type Statistic struct {
+type Stats struct {
 	InQueue                   AtomicInt
 	InProcessing              AtomicInt
 	InScheduled               AtomicInt
@@ -100,6 +100,8 @@ type Task struct {
 	Delay   int32  `json:"delay"`
 }
 
+// NewConveyor creates a new conveyor ready to handle tasks after running
+// initialize on itself.
 func NewConveyor(conveyorID string, config *Config) *Conveyor {
 	now := time.Now()
 	conv := &Conveyor{
@@ -114,13 +116,14 @@ func NewConveyor(conveyorID string, config *Config) *Conveyor {
 	return conv
 }
 
+// Init intializes either a new or restored conveyor.
 func (conv *Conveyor) Init() *Conveyor {
 	conv.newTaskId = make(chan string)
 	conv.notifyReady = make(chan int, conv.Config.NWorker)
 	conv.notifySignal = make(chan convSignal)
 	conv.scheduler = NewScheduler(conv)
 
-	conv.Stats = &Statistic{}
+	conv.Stats = &Stats{}
 	conv.queueKeyStart = []byte(conv.ID + startPoint + queueKey + startPoint)
 	conv.queueKeyStop = []byte(conv.ID + startPoint + queueKey + stopPoint)
 	conv.waitKeyStart = []byte(conv.ID + startPoint + waitKey + startPoint)
@@ -174,7 +177,6 @@ func (conv *Conveyor) Start() error {
 		}
 
 		if conv.Paused {
-			log.Debug("sleeping")
 			time.Sleep(1 * time.Second)
 			continue
 		}
@@ -209,12 +211,15 @@ start:
 		goto start
 	}
 
+	// TODO: implement queue delete func.
 	v := iter.Value()
 	err := db.Delete(k, nil)
 	if err != nil {
 		log.Error(fmt.Sprintf("error occur while trying to delete key %s from db", k), err)
 		panic("for now")
 	}
+	conv.Stats.InQueue.Add(-1)
+
 	t := &Task{}
 	err = GobDecode(v, t)
 	if err != nil {
@@ -237,12 +242,12 @@ func (conv *Conveyor) process(task *Task) {
 	_, err := url.Parse(task.Target)
 	if err != nil {
 		// Assume invalid task, discard it.
-		log.Error("invalid target URL, discarding task", err)
+		log.Error(fmt.Sprintf("conveyor %s task %s has invalid target URL, discarding", conv.ID, task.ID), err)
 		return
 	}
 
-	log.Infof("processing task id: %s target: %s tries: %d",
-		task.ID, task.Target, task.Tries)
+	log.Infof("conveyor %s task %s processing with target: %s tries: %d",
+		conv.ID, task.ID, task.Target, task.Tries)
 
 	transport := http.Transport{
 		Dial: func(network, addr string) (net.Conn, error) {
@@ -261,21 +266,23 @@ func (conv *Conveyor) process(task *Task) {
 	}
 
 	if err == nil && resp.StatusCode >= 200 && resp.StatusCode <= 299 {
-		log.Infof("task completed successfully: %s", resp.Status)
+		// TODO: Remove task from processing list.
+		log.Infof("conveyor %s task %s completed successfully: %s", conv.ID, task.ID, resp.Status)
 		conv.Stats.TotalProcessedOK.Add(1)
 		timeSpent := int64(time.Now().Sub(startTime))
 		conv.Stats.TotalTime.Add(timeSpent)
 		conv.Stats.TimeLastOK.Set(timeSpent)
 		return
 	} else if err == nil && resp.StatusCode >= 400 && resp.StatusCode <= 499 {
-		log.Infof("task failed, request invalid: %s", resp.Status)
+		// TODO: Remove task from processing list.
+		log.Infof("conveyor %s task %s failed, request invalid: %s", conv.ID, task.ID, resp.Status)
 		conv.Stats.TotalProcessedError.Add(1)
 		return
 	}
 
 	if conv.Config.TaskMaxTries > 0 && task.Tries >= conv.Config.TaskMaxTries-1 {
-		// Remove from ProcessingList.
-		log.Infof("task reached max tries: %d", task.Tries)
+		// TODO: Remove task from processing list.
+		log.Infof("conveyor %s task %s reached max tries: %d", conv.ID, task.ID, task.Tries)
 		conv.Stats.TotalProcessedError.Add(1)
 		return
 	}
@@ -284,22 +291,23 @@ func (conv *Conveyor) process(task *Task) {
 
 	delay, err := conv.scheduler.Reschedule(task)
 	if err != nil {
-		log.Info("task failed")
+		log.Error(fmt.Sprintf("conveyor %s task %s could not be rescheduled", conv.ID, task.ID), err)
+		// TODO: try to dump task.
 		return
 	}
 
-	log.Infof("task failed, rescheduled for retry in %d seconds", delay)
+	log.Infof("conveyor %s task %s failed, rescheduled for retry in %d seconds", conv.ID, task.ID, delay)
 	conv.Stats.TotalProcessedRescheduled.Add(1)
 
 }
 
 func (conv *Conveyor) reset() error {
-	// TODO: move from key range p to q.
+	// TODO: Move all tasks from processing list to waiting list.
 	return nil
 }
 
 func (conv *Conveyor) Flush() error {
-	// TODO: remove all keys in range q.
+	// TODO: Remove all tasks in waiting list.
 	return nil
 }
 
@@ -353,7 +361,6 @@ func (conv *Conveyor) Add(target, payload string, scheduled int64) (*Task, error
 			return nil, err
 		}
 	}
-
 	return task, nil
 }
 
@@ -364,7 +371,7 @@ func (conv *Conveyor) add(taskId string, task []byte) error {
 	// Key format: [conv id] \x00 [key type] \x00 [timestamp] \x00 [task id]
 	key := append(conv.queueKeyStart,
 		[]byte(fmt.Sprintf("%d%s%s", time.Now().Unix(), startPoint, taskId))...)
-	log.Infof("new task %s added to conveyor %s", taskId, conv.ID)
+	log.Infof("conveyor %s task %s added to conveyor", conv.ID, taskId)
 
 	wo := &opt.WriteOptions{}
 	err = db.Put([]byte(key), task, wo)
@@ -375,7 +382,7 @@ func (conv *Conveyor) add(taskId string, task []byte) error {
 
 	// Signal new task to queue reader.
 	conv.cond.Signal()
-
+	conv.Stats.InQueue.Add(1)
 	return nil
 }
 
@@ -385,6 +392,7 @@ func (conv *Conveyor) Tasks() ([]*Task, error) {
 	res := make([]*Task, 0, limit)
 
 	iter := db.NewIterator(nil)
+	defer iter.Release()
 	for iter.Seek(conv.queueKeyStart); iter.Valid(); iter.Next() {
 		k := iter.Key()
 		v := iter.Value()
@@ -397,7 +405,6 @@ func (conv *Conveyor) Tasks() ([]*Task, error) {
 		err := GobDecode(v, t)
 		if err != nil {
 			log.Error("", err)
-			iter.Release()
 			return res, err
 		}
 		res[i] = t
@@ -407,7 +414,6 @@ func (conv *Conveyor) Tasks() ([]*Task, error) {
 			break
 		}
 	}
-	iter.Release()
 
 	return res, nil
 }

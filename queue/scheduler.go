@@ -33,7 +33,7 @@ func (sched *Scheduler) Start() {
 		select {
 		case sig := <-sched.notifySignal:
 			if sig == stop {
-				log.Infof("stopping scheduler for conveyor %s", sched.Conveyor.ID)
+				log.Infof("conveyor %s stopping scheduler", sched.Conveyor.ID)
 				return
 			}
 		default:
@@ -56,14 +56,15 @@ func (sched *Scheduler) Start() {
 			// Parse out task id in order to avoid decode/encode gob.
 			i := bytes.LastIndex(k, []byte(startPoint))
 			taskId := string(k[i:len(k)])
-			log.Infof("placing scheduled task %s into queue", taskId)
+			log.Infof("conveyor %s task %s placed back into queue by scheduler",
+				sched.Conveyor.ID, taskId)
 
 			// TODO: Batch add / removal of task.
 			sched.Conveyor.add(taskId, v)
-			db.Delete(k, nil)
+			_ = db.Delete(k, nil) // TODO: Check error value..
+			sched.Conveyor.Stats.InScheduled.Add(-1)
 		}
 		iter.Release()
-
 		time.Sleep(sched.Rate)
 	}
 }
@@ -84,7 +85,6 @@ func (sched *Scheduler) Reschedule(task *Task) (int32, error) {
 
 	retryAt := time.Now().Unix() + int64(task.Delay)
 	err = sched.Add(task.ID, t, retryAt)
-
 	return task.Delay, err
 }
 
@@ -97,5 +97,6 @@ func (sched *Scheduler) Add(taskId string, task []byte, time int64) error {
 		log.Error("add task to db failed", err)
 		return err
 	}
+	sched.Conveyor.Stats.InScheduled.Add(1)
 	return nil
 }
