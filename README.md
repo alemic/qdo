@@ -7,11 +7,10 @@ Create conveyor
 ----------------------
     curl http://127.0.0.1:8080/api/conveyor \
        -d conveyor_id=foo \
-       -d workers=2 \
-       -d throttle=100 \
-       -d task_t_limit=60 \
-       -d task_max_tries=10 \
-       -d log_size=100
+       -d max_concurrent=2 \
+       -d max_rate=100 \
+       -d task_timeout=60 \
+       -d task_max_tries=10
 
 Update conveyor
 ----------------------

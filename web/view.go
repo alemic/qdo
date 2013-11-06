@@ -39,8 +39,8 @@ func viewAllConveyors(w http.ResponseWriter, r *http.Request) {
 		conv := &ConveyorRowResult{
 			ID:              v.ID,
 			Status:          "Active",
-			MaxRate:         v.Config.Throttle,
-			MaxConcurrent:   v.Config.NWorker,
+			MaxRate:         v.Config.MaxRate,
+			MaxConcurrent:   v.Config.MaxConcurrent,
 			TasksWaiting:    0,
 			TasksProcessing: 0,
 		}

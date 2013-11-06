@@ -19,11 +19,10 @@
     </div>
     <div class="config">
       <h2>Config</h2>
-      <dl><dt>Max rate:</dt><dd>{{.Result.Conv.Config.Throttle}} <span class="unit">/ s</span></dd></dl>
-      <dl><dt>Max concurrent:</dt><dd>{{.Result.Conv.Config.NWorker}}</dd></dl>
+      <dl><dt>Max rate:</dt><dd>{{.Result.Conv.Config.MaxRate}} <span class="unit">/ s</span></dd></dl>
+      <dl><dt>Max concurrent:</dt><dd>{{.Result.Conv.Config.MaxConcurrent}}</dd></dl>
       <dl><dt>Max tries:</dt><dd>{{.Result.Conv.Config.TaskMaxTries}} <span class="unit">/ task</span></dd></dl>
-      <dl><dt>Task timeout:</dt><dd>{{.Result.Conv.Config.TaskTLimit}}<span class="unit">s</span></dd></dl>
-      <dl><dt>Log size:</dt><dd>{{.Result.Conv.Config.LogSize}}</dd></dl>
+      <dl><dt>Task timeout:</dt><dd>{{.Result.Conv.Config.TaskTimeout}}<span class="unit">s</span></dd></dl>
     </div>
   </div>
 </div>

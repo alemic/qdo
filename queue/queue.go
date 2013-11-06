@@ -54,11 +54,10 @@ type Conveyor struct {
 }
 
 type Config struct {
-	NWorker      int32 `json:"n_worker"`       // Number of simultaneous workers processing tasks.
-	Throttle     int32 `json:"throttle"`       // Number of maxium task invocations from queue per second.
-	TaskTLimit   int32 `json:"task_t_limit"`   // Duration allowed per task to complete in seconds.
-	TaskMaxTries int32 `json:"task_max_tries"` // Number of tries per task before giving up. Set 0 for unlimited retries.
-	LogSize      int32 `json:"log_size"`       // Number of max log entries.
+	MaxConcurrent int32 `json:"max_concurrent"` // Number of simultaneous workers processing tasks.
+	MaxRate       int32 `json:"max_rate"`       // Number of maxium task invocations from queue per second.
+	TaskTimeout   int32 `json:"task_timeout"`   // Duration allowed per task to complete in seconds.
+	TaskMaxTries  int32 `json:"task_max_tries"` // Number of tries per task before giving up. Set 0 for unlimited retries.
 }
 
 type AtomicInt int64
@@ -119,7 +118,7 @@ func NewConveyor(conveyorID string, config *Config) *Conveyor {
 // Init intializes either a new or restored conveyor.
 func (conv *Conveyor) Init() *Conveyor {
 	conv.newTaskId = make(chan string)
-	conv.notifyReady = make(chan int, conv.Config.NWorker)
+	conv.notifyReady = make(chan int, conv.Config.MaxConcurrent)
 	conv.notifySignal = make(chan convSignal)
 	conv.scheduler = NewScheduler(conv)
 
@@ -148,7 +147,7 @@ func (conv *Conveyor) Init() *Conveyor {
 // Starting the conveyor belt and handles retrieving and delegating tasks.
 func (conv *Conveyor) Start() error {
 	log.Infof("starting conveyor \"%s\" with %d worker(s)", conv.ID,
-		conv.Config.NWorker)
+		conv.Config.MaxConcurrent)
 
 	// Treat existing tasks in processing list as failed. Reschedule to waiting
 	// queue.
@@ -189,9 +188,9 @@ func (conv *Conveyor) Start() error {
 		go conv.process(task)
 
 		// Throttle task invocations per second.
-		if conv.Config.Throttle > 0 {
+		if conv.Config.MaxRate > 0 {
 			time.Sleep(time.Duration(
-				time.Second / (time.Duration(conv.Config.Throttle) * time.Second)))
+				time.Second / (time.Duration(conv.Config.MaxRate) * time.Second)))
 		}
 	}
 	return nil
@@ -251,10 +250,10 @@ func (conv *Conveyor) process(task *Task) {
 
 	transport := http.Transport{
 		Dial: func(network, addr string) (net.Conn, error) {
-			return net.DialTimeout(network, addr, time.Duration(conv.Config.TaskTLimit)*time.Second)
+			return net.DialTimeout(network, addr, time.Duration(conv.Config.TaskTimeout)*time.Second)
 		},
 		Proxy: http.ProxyFromEnvironment,
-		ResponseHeaderTimeout: time.Duration(conv.Config.TaskTLimit) * time.Second,
+		ResponseHeaderTimeout: time.Duration(conv.Config.TaskTimeout) * time.Second,
 	}
 	client := http.Client{
 		Transport: &transport,
