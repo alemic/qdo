@@ -265,6 +265,7 @@ func (conv *Conveyor) process(task *Task) {
 	}
 
 	if err == nil && resp.StatusCode >= 200 && resp.StatusCode <= 299 {
+		// Consider task done successful.
 		// TODO: Remove task from processing list.
 		log.Infof("conveyor %s task %s completed successfully: %s", conv.ID, task.ID, resp.Status)
 		conv.Stats.TotalProcessedOK.Add(1)
@@ -273,20 +274,27 @@ func (conv *Conveyor) process(task *Task) {
 		conv.Stats.TimeLastOK.Set(timeSpent)
 		return
 	} else if err == nil && resp.StatusCode >= 400 && resp.StatusCode <= 499 {
+		// Consider task invalid as return status says. No point in retrying
+		// later.
 		// TODO: Remove task from processing list.
 		log.Infof("conveyor %s task %s failed, request invalid: %s", conv.ID, task.ID, resp.Status)
 		conv.Stats.TotalProcessedError.Add(1)
 		return
+	} else if err != nil {
+		// Error while sending task request, retry again later.
+		log.Error(fmt.Sprintf("conveyor %s task %s resulted in error", conv.ID, task.ID), err)
+	} else {
+		// Task sent, but not completed successfully. Retry again later.
+		log.Infof("conveyor %s task %s failed with http status %d", conv.ID, task.ID, resp.StatusCode)
 	}
+
+	conv.Stats.TotalProcessedError.Add(1)
 
 	if conv.Config.TaskMaxTries > 0 && task.Tries >= conv.Config.TaskMaxTries-1 {
 		// TODO: Remove task from processing list.
 		log.Infof("conveyor %s task %s reached max tries: %d", conv.ID, task.ID, task.Tries)
-		conv.Stats.TotalProcessedError.Add(1)
 		return
 	}
-
-	conv.Stats.TotalProcessedError.Add(1)
 
 	delay, err := conv.scheduler.Reschedule(task)
 	if err != nil {
@@ -295,9 +303,8 @@ func (conv *Conveyor) process(task *Task) {
 		return
 	}
 
-	log.Infof("conveyor %s task %s failed, rescheduled for retry in %d seconds", conv.ID, task.ID, delay)
+	log.Infof("conveyor %s task %s rescheduled for retry in %d seconds", conv.ID, task.ID, delay)
 	conv.Stats.TotalProcessedRescheduled.Add(1)
-
 }
 
 func (conv *Conveyor) reset() error {
