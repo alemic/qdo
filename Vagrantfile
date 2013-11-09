@@ -41,7 +41,6 @@ Vagrant.configure("2") do |config|
   config.vm.box_url = "http://files.vagrantup.com/precise64.box"
   config.vm.network :forwarded_port, guest: 8080, host: 8080
   config.vm.synced_folder ".", "/home/vagrant/go/src/github.com/borgenk/qdo", id: "vagrant-root", :owner => "vagrant", :group => "vagrant"
-  #config.vm.provision :shell, :path => "vagrant/setup.sh"
   config.vm.provision :shell, :inline => $script
 
   config.vm.provider "virtualbox" do |vb|
