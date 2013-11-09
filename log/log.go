@@ -47,3 +47,18 @@ func Error(meta string, e error) {
 func Errorf(format string, v ...interface{}) {
 	(*w).Errorf(format, v...)
 }
+
+type NullWriter struct{}
+
+func New() *NullWriter {
+	return &NullWriter{}
+}
+
+func (w *NullWriter) Debug(msg string)                       {}
+func (w *NullWriter) Debugf(format string, v ...interface{}) {}
+func (w *NullWriter) Info(msg string)                        {}
+func (w *NullWriter) Infof(format string, v ...interface{})  {}
+func (w *NullWriter) Warn(msg string)                        {}
+func (w *NullWriter) Warnf(format string, v ...interface{})  {}
+func (w *NullWriter) Error(meta string, e error)             {}
+func (w *NullWriter) Errorf(format string, v ...interface{}) {}
