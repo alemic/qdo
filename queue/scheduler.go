@@ -53,9 +53,10 @@ func (sched *Scheduler) Start() {
 				break
 			}
 
-			// Parse out task id in order to avoid decode/encode gob.
+			// Parse out task id in order to avoid decode/encode gob. The task
+			// id is in the last part of the key, seperated with \x00.
 			i := bytes.LastIndex(k, []byte(startPoint))
-			taskId := string(k[i:len(k)])
+			taskId := fmt.Sprintf("%s", (k[i+1 : len(k)]))
 			log.Infof("conveyor %s task %s placed back into queue by scheduler",
 				sched.Conveyor.ID, taskId)
 
